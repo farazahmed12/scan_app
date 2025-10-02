@@ -1,10 +1,10 @@
 import './App.css'
-import CameraCapture from './grok/CameraCapture'
+import NailKYCCamera from './NailKYCCamera'
 
 function App() {
 
   return (
-   <CameraCapture />
+   <NailKYCCamera />
 
   )
 
