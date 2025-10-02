@@ -17,11 +17,12 @@ const calculateHandSize = (landmarks) => {
 
 const checkDistance = (handSize, canvasWidth) => {
   const relativeSize = handSize / canvasWidth;
+
   
   // Ideal nail capture range: hand should fill 30-50% of screen width
   if (relativeSize < 0.25) {
     return 'TOO FAR';
-  } else if (relativeSize > 0.55) {
+  } else if (relativeSize > 0.65) {
     return 'TOO CLOSE';
   } else {
     return 'PERFECT';
@@ -53,70 +54,54 @@ const drawNails = (ctx, landmarks) => {
   });
 };
 
+
 const detectFingers = (landmarks) => {
-  // Indices: [Tip, DIP, PIP, MCP]
+  // Correct finger landmark indices for handpose model (21 landmarks)
+  // Each finger: [tip, middle_joint, base_joint]
   const FINGER_LANDMARKS = [
-      [4, 3, 2, 1],   // Thumb
-      [8, 7, 6, 5],   // Index
-      [12, 11, 10, 9],  // Middle
-      [16, 15, 14, 13], // Ring
-      [20, 19, 18, 17]  // Pinky
+    [4, 3, 2],   // Thumb: tip, ip, mcp
+    [8, 6, 5],   // Index: tip, pip, mcp  
+    [12, 10, 9], // Middle: tip, pip, mcp
+    [16, 14, 13], // Ring: tip, pip, mcp
+    [20, 18, 17]  // Pinky: tip, pip, mcp
   ];
+
   const detectedFingers = [];
-  const wrist = landmarks[0];
-  
-  FINGER_LANDMARKS.forEach(([tipIndex, , pipIndex, mcpIndex], fingerId) => {
-      const tip = landmarks[tipIndex];
-      const pip = landmarks[pipIndex];
-      const mcp = landmarks[mcpIndex]; // Base Joint
 
-      let isExtended = false;
+  FINGER_LANDMARKS.forEach(([tipIndex, middleIndex, baseIndex], fingerId) => {
+    const tip = landmarks[tipIndex];
+    const middle = landmarks[middleIndex];
+    const base = landmarks[baseIndex];
 
-      if (fingerId !== 0) { // Index, Middle, Ring, Pinky (Fingers 1-4)
-          // Distance from MCP (Base) to PIP (Middle Joint)
-          const distMCP_PIP = Math.sqrt(
-              Math.pow(pip[0] - mcp[0], 2) + Math.pow(pip[1] - mcp[1], 2)
-          );
+    let isExtended = false;
 
-          // Distance from MCP (Base) to Tip
-          const distMCP_TIP = Math.sqrt(
-              Math.pow(tip[0] - mcp[0], 2) + Math.pow(tip[1] - mcp[1], 2)
-          );
+    if (fingerId === 0) { 
+      // Thumb - check horizontal position
+      // For right hand: tip should be to the left of middle joint when extended
+      isExtended = tip[0] < middle[0];
+    } else { 
+      // Other fingers - check vertical position
+      // For extended finger: tip should be above middle joint, middle above base
+      const isTipAboveMiddle = tip[1] < middle[1];
+      const isMiddleAboveBase = middle[1] < base[1];
+      
+      isExtended = isTipAboveMiddle && isMiddleAboveBase;
+    }
 
-          // Tip distance must be at least 1.3 times the middle joint distance to be considered extended
-          isExtended = distMCP_TIP > distMCP_PIP * 1.3; 
-      } else { // Thumb (Finger 0)
-          
-          // A) Z-Depth Check: Tip (tip[2]) must be closer to the camera (lower Z) than the base (mcp[2]).
-          // This prevents detecting a tucked-back thumb.
-          const isProjectedOutwardZ = tip[2] < mcp[2]; 
+    // Visibility check - ensure finger is sufficiently far from wrist
+    const wrist = landmarks[0];
+    const wristToTip = Math.sqrt(
+      Math.pow(tip[0] - wrist[0], 2) + Math.pow(tip[1] - wrist[1], 2)
+    );
+    const isVisible = wristToTip > 80; // Reduced threshold for better detection
 
-          // B) X-Y Extension Check: Tip must be significantly further from the wrist than the base joint.
-          const distWrist_Tip = Math.sqrt(
-              Math.pow(tip[0] - wrist[0], 2) + Math.pow(tip[1] - wrist[1], 2)
-          );
-          const distWrist_MCP = Math.sqrt(
-              Math.pow(mcp[0] - wrist[0], 2) + Math.pow(mcp[1] - wrist[1], 2)
-          );
-          const isExtendedXY = distWrist_Tip > distWrist_MCP * 1.1; // 10% tolerance
-
-          isExtended = isProjectedOutwardZ && isExtendedXY;
-      }
-
-      // 2. Visibility Check (Tip must be a minimum distance from the wrist to be visible)
-      const wristToTip = Math.sqrt(
-          Math.pow(tip[0] - wrist[0], 2) + Math.pow(tip[1] - wrist[1], 2)
-      );
-      const isVisible = wristToTip > 100; 
-
-      if (isExtended && isVisible) {
-          detectedFingers.push(fingerId);
-      }
+    if (isExtended && isVisible) {
+      detectedFingers.push(fingerId);
+    }
   });
-  
+
   return detectedFingers;
 };
-
 
 // --- React Component ---
 
