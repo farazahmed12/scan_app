@@ -1,11 +1,14 @@
 import './App.css'
-import NailKYCCamera from './NailKYCCamera'
+import HandDetection from './deep/HandDetection'
 
 function App() {
 
   return (
-  <NailKYCCamera />
+ <HandDetection />
+
   )
+
+ 
 }
 
 export default App

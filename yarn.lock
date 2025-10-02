@@ -283,6 +283,21 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
+"@mediapipe/camera_utils@^0.3.1675466862":
+  version "0.3.1675466862"
+  resolved "https://registry.npmjs.org/@mediapipe/camera_utils/-/camera_utils-0.3.1675466862.tgz"
+  integrity sha512-siuXBoUxWo9WL0MeAxIxvxY04bvbtdNl7uCxoJxiAiRtNnCYrurr7Vl5VYQ94P7Sq0gVq6PxIDhWWeZ/pLnSzw==
+
+"@mediapipe/drawing_utils@^0.3.1675466124":
+  version "0.3.1675466124"
+  resolved "https://registry.npmjs.org/@mediapipe/drawing_utils/-/drawing_utils-0.3.1675466124.tgz"
+  integrity sha512-/IWIB/iYRMtiUKe3k7yGqvwseWHCOqzVpRDfMgZ6gv9z7EEimg6iZbRluoPbcNKHbYSxN5yOvYTzUYb8KVf22Q==
+
+"@mediapipe/tasks-vision@^0.10.22-rc.20250304":
+  version "0.10.22-rc.20250304"
+  resolved "https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-0.10.22-rc.20250304.tgz"
+  integrity sha512-dElxVXMFGthshfIj+qAVm8KE2jmNo2p8oXFib8WzEjb7GNaX/ClWBc8UJfoSZwjEMVrdHJ4YUfa7P3ifl6MIWw==
+
 "@oxc-project/runtime@0.90.0":
   version "0.90.0"
   resolved "https://registry.npmjs.org/@oxc-project/runtime/-/runtime-0.90.0.tgz"
@@ -324,7 +339,7 @@
     "@types/seedrandom" "^2.4.28"
     seedrandom "^3.0.5"
 
-"@tensorflow/tfjs-backend-webgl@^4.10.0", "@tensorflow/tfjs-backend-webgl@4.22.0":
+"@tensorflow/tfjs-backend-webgl@^4.10.0", "@tensorflow/tfjs-backend-webgl@^4.22.0", "@tensorflow/tfjs-backend-webgl@4.22.0":
   version "4.22.0"
   resolved "https://registry.npmjs.org/@tensorflow/tfjs-backend-webgl/-/tfjs-backend-webgl-4.22.0.tgz"
   integrity sha512-H535XtZWnWgNwSzv538czjVlbJebDl5QTMOth4RXr2p/kJ1qSIXE0vZvEtO+5EC9b00SvhplECny2yDewQb/Yg==
@@ -334,12 +349,12 @@
     "@types/seedrandom" "^2.4.28"
     seedrandom "^3.0.5"
 
-"@tensorflow/tfjs-converter@^4.10.0", "@tensorflow/tfjs-converter@4.22.0":
+"@tensorflow/tfjs-converter@^4.10.0", "@tensorflow/tfjs-converter@^4.22.0", "@tensorflow/tfjs-converter@4.22.0":
   version "4.22.0"
   resolved "https://registry.npmjs.org/@tensorflow/tfjs-converter/-/tfjs-converter-4.22.0.tgz"
   integrity sha512-PT43MGlnzIo+YfbsjM79Lxk9lOq6uUwZuCc8rrp0hfpLjF6Jv8jS84u2jFb+WpUeuF4K33ZDNx8CjiYrGQ2trQ==
 
-"@tensorflow/tfjs-core@^4.10.0", "@tensorflow/tfjs-core@4.22.0":
+"@tensorflow/tfjs-core@^4.10.0", "@tensorflow/tfjs-core@^4.22.0", "@tensorflow/tfjs-core@4.22.0":
   version "4.22.0"
   resolved "https://registry.npmjs.org/@tensorflow/tfjs-core/-/tfjs-core-4.22.0.tgz"
   integrity sha512-LEkOyzbknKFoWUwfkr59vSB68DMJ4cjwwHgicXN0DUi3a0Vh1Er3JQqCI1Hl86GGZQvY8ezVrtDIvqR1ZFW55A==
@@ -1317,7 +1332,7 @@ punycode@^2.1.0:
   resolved "https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz"
   integrity sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==
 
-react-dom@^19.1.1:
+react-dom@^19.1.1, react-dom@>=16.2.0:
   version "19.2.0"
   resolved "https://registry.npmjs.org/react-dom/-/react-dom-19.2.0.tgz"
   integrity sha512-UlbRu4cAiGaIewkPyiRGJk0imDN2T3JjieT6spoL2UeSf5od4n5LB/mQ4ejmxhCFT1tYe8IvaFulzynWovsEFQ==
@@ -1329,7 +1344,12 @@ react-refresh@^0.17.0:
   resolved "https://registry.npmjs.org/react-refresh/-/react-refresh-0.17.0.tgz"
   integrity sha512-z6F7K9bV85EfseRCp2bzrpyQ0Gkw1uLoCel9XBVWPg/TjRj94SkJzUTGfOa4bs7iJvBWtQG0Wq7wnI0syw3EBQ==
 
-react@^19.1.1, react@^19.2.0:
+react-webcam@^7.2.0:
+  version "7.2.0"
+  resolved "https://registry.npmjs.org/react-webcam/-/react-webcam-7.2.0.tgz"
+  integrity sha512-xkrzYPqa1ag2DP+2Q/kLKBmCIfEx49bVdgCCCcZf88oF+0NPEbkwYk3/s/C7Zy0mhM8k+hpdNkBLzxg8H0aWcg==
+
+react@^19.1.1, react@^19.2.0, react@>=16.2.0:
   version "19.2.0"
   resolved "https://registry.npmjs.org/react/-/react-19.2.0.tgz"
   integrity sha512-tmbWg6W31tQLeB5cdIBOicJDJRR2KzXsV7uSK9iNfLWQ5bIZfxuPEHp7M8wiHyHnn0DD1i7w3Zmin0FtkrwoCQ==
