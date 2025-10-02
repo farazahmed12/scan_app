@@ -1,10 +1,10 @@
 import './App.css'
-import HandDetection from './deep/HandDetection'
+import CameraCapture from './grok/CameraCapture'
 
 function App() {
 
   return (
- <HandDetection />
+   <CameraCapture />
 
   )
 

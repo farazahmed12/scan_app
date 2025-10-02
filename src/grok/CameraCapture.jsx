@@ -1,5 +1,6 @@
-import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
-import { FilesetResolver, HAND_CONNECTIONS, HandLandmarker } from '@mediapipe/tasks-vision';
+import * as handpose from '@tensorflow-models/handpose';
+import * as tf from '@tensorflow/tfjs';
+import '@tensorflow/tfjs-backend-webgl'; // GPU acceleration
 import React, { useEffect, useRef, useState } from 'react';
 
 function CameraCapture() {
@@ -8,7 +9,7 @@ function CameraCapture() {
   const [fingerCount, setFingerCount] = useState(0);
   const [distanceMessage, setDistanceMessage] = useState('');
   const [capturedImage, setCapturedImage] = useState(null);
-  const handLandmarkerRef = useRef(null);
+  const modelRef = useRef(null);
   const runningRef = useRef(false);
 
   useEffect(() => {
@@ -16,7 +17,7 @@ function CameraCapture() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
 
-    // Full screen setup
+    // Resize to full screen
     const setFullScreen = () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
@@ -28,7 +29,7 @@ function CameraCapture() {
     setFullScreen();
     window.addEventListener('resize', setFullScreen);
 
-    // Camera access
+    // Get camera access
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
       .then(stream => {
         video.srcObject = stream;
@@ -37,138 +38,123 @@ function CameraCapture() {
       })
       .catch(err => console.error('Camera access error:', err));
 
-    // Initialize HandLandmarker
-    const initializeHandLandmarker = async () => {
+    // Load Handpose model
+    const loadModel = async () => {
       try {
-        const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm');
-        handLandmarkerRef.current = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-            delegate: 'GPU'
-          },
-          runningMode: 'VIDEO',
-          numHands: 1,
-          minHandDetectionConfidence: 0.7,
-          minHandPresenceConfidence: 0.7,
-          minTrackingConfidence: 0.7,
-        });
-        console.log('HandLandmarker initialized');
+        await tf.setBackend('webgl');
+        modelRef.current = await handpose.load();
+        console.log('Handpose model loaded');
         runningRef.current = true;
         predictWebcam();
       } catch (error) {
-        console.error('Error initializing HandLandmarker:', error);
+        console.error('Error loading Handpose model:', error);
       }
     };
 
-    initializeHandLandmarker();
+    loadModel();
 
-    // Prediction loop using requestAnimationFrame
-    let lastVideoTime = -1;
-    const predictWebcam = () => {
-      if (!runningRef.current || !handLandmarkerRef.current || !video || video.readyState < 2) {
+    // Prediction loop
+    const predictWebcam = async () => {
+      if (!runningRef.current || !modelRef.current || !video || video.readyState !== 4) {
         requestAnimationFrame(predictWebcam);
         return;
       }
 
-      const nowInMs = performance.now();
-      if (lastVideoTime !== video.currentTime) {
-        lastVideoTime = video.currentTime;
-        handLandmarkerRef.current.detectForVideo(video, nowInMs, (results) => {
-          processResults(results, ctx, canvas);
-        });
-      }
+      const predictions = await modelRef.current.estimateHands(video);
+      processResults(predictions, ctx, canvas);
 
       requestAnimationFrame(predictWebcam);
     };
 
-    // Cleanup
     return () => {
       window.removeEventListener('resize', setFullScreen);
       runningRef.current = false;
-      if (handLandmarkerRef.current) {
-        handLandmarkerRef.current.close();
-      }
     };
   }, []);
 
-  const processResults = (results, ctx, canvas) => {
-    console.log('Processing results:', results); // Debug: Check if results are coming
-
-    ctx.save();
+  const processResults = (predictions, ctx, canvas) => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Flip for mirror effect
+    // Mirror effect
+    ctx.save();
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
 
-    // Draw video frame
+    // Draw video feed
     ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
 
     let detectedFingers = 0;
-    let handHeight = 0;
     let newDistanceMessage = '';
 
-    if (results.landmarks && results.landmarks.length > 0) {
-      const landmarks = results.landmarks[0];
+    if (predictions && predictions.length > 0) {
+      const landmarks = predictions[0].landmarks;
 
-      // Draw landmarks
-      drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
-      drawLandmarks(ctx, landmarks, { color: '#FF0000', lineWidth: 2 });
+      // ✅ Finger open/close detection
+      const isFingerOpen = (tip, pip) => landmarks[tip][1] < landmarks[pip][1]; // y-axis check
+      const thumbOpen = landmarks[4][0] > landmarks[3][0]; // for right hand (mirrored)
+      const indexOpen = isFingerOpen(8, 6);
+      const middleOpen = isFingerOpen(12, 10);
+      const ringOpen = isFingerOpen(16, 14);
+      const pinkyOpen = isFingerOpen(20, 18);
 
-      // Finger detection
-      const fingerTips = [4, 8, 12, 16, 20];
-      detectedFingers = fingerTips.filter(tip => landmarks[tip] && landmarks[tip].visibility > 0.8).length;
+      detectedFingers = [thumbOpen, indexOpen, middleOpen, ringOpen, pinkyOpen]
+        .filter(Boolean).length;
 
-      // Distance estimation
+      // ✅ Distance estimation
       const wrist = landmarks[0];
       const middleTip = landmarks[12];
       if (wrist && middleTip) {
-        const dx = (middleTip.x - wrist.x) * canvas.width;
-        const dy = (middleTip.y - wrist.y) * canvas.height;
-        handHeight = Math.sqrt(dx ** 2 + dy ** 2);
+        const dx = middleTip[0] - wrist[0];
+        const dy = middleTip[1] - wrist[1];
+        const handHeight = Math.sqrt(dx ** 2 + dy ** 2);
         const normalizedHeight = handHeight / canvas.height;
+
         if (normalizedHeight < 0.3) {
-          newDistanceMessage = 'Hand too far - Move closer';
+          newDistanceMessage = 'Too Far - Move Closer';
         } else if (normalizedHeight > 0.7) {
-          newDistanceMessage = 'Hand too close - Move back';
+          newDistanceMessage = 'Too Close - Move Back';
         } else {
-          newDistanceMessage = 'Good distance';
+          newDistanceMessage = 'Perfect Distance';
         }
+      }
+
+      // ✅ Auto-capture when 5 fingers + perfect distance
+      if (detectedFingers === 5 && newDistanceMessage === 'Perfect Distance' && !capturedImage) {
+        const captureCanvas = document.createElement('canvas');
+        captureCanvas.width = videoRef.current.videoWidth;
+        captureCanvas.height = videoRef.current.videoHeight;
+        captureCanvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+        const imageData = captureCanvas.toDataURL('image/jpeg');
+        setCapturedImage(imageData);
+        console.log('Captured Image:', imageData);
       }
     }
 
     setFingerCount(detectedFingers);
     setDistanceMessage(newDistanceMessage);
 
-    // Restore and draw text
-    ctx.restore();
-    ctx.font = '30px Arial';
-    ctx.fillStyle = '#FFFFFF';
+    // Overlay UI
+    ctx.font = '32px Arial';
+    ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
-    ctx.strokeText(`Detected Fingers: ${detectedFingers}/5`, 20, 50);
-    ctx.fillText(`Detected Fingers: ${detectedFingers}/5`, 20, 50);
-    ctx.strokeText(distanceMessage, 20, 100);
-    ctx.fillText(distanceMessage, 20, 100);
-
-    // Auto-capture
-    if (detectedFingers === 5 && newDistanceMessage === 'Good distance') {
-      const captureCanvas = document.createElement('canvas');
-      captureCanvas.width = videoRef.current.videoWidth;
-      captureCanvas.height = videoRef.current.videoHeight;
-      captureCanvas.getContext('2d').drawImage(videoRef.current, 0, 0);
-      const imageData = captureCanvas.toDataURL('image/jpeg');
-      setCapturedImage(imageData);
-      console.log('Captured image:', imageData);
-      ctx.strokeText('Captured!', 20, 150);
-      ctx.fillText('Captured!', 20, 150);
-    }
+    ctx.lineWidth = 3;
+    ctx.strokeText(`Fingers: ${detectedFingers}/5`, 30, 50);
+    ctx.fillText(`Fingers: ${detectedFingers}/5`, 30, 50);
+    ctx.strokeText(distanceMessage, 30, 100);
+    ctx.fillText(distanceMessage, 30, 100);
   };
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <div className="camera-container">
       <video ref={videoRef} style={{ display: 'none' }} playsInline />
-      <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
+      <canvas ref={canvasRef} className="camera-canvas" />
+      {capturedImage && (
+        <div className="capture-preview">
+          <h3>Captured!</h3>
+          <img src={capturedImage} alt="Captured Hand" />
+        </div>
+      )}
     </div>
   );
 }
