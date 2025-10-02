@@ -1,0 +1,295 @@
+/* Container Styles */
+.nail-kyc-container {
+    position: fixed;
+    inset: 0;
+    background-color: #000;
+    overflow: hidden;
+  }
+  
+  /* Video and Canvas */
+  .nail-kyc-video,
+  .nail-kyc-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+  }
+  
+  .nail-kyc-canvas-hidden {
+    display: none;
+  }
+  
+  /* Loading Overlay */
+  .nail-kyc-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(12px);
+  }
+  
+  .nail-kyc-loader {
+    width: 64px;
+    height: 64px;
+    border: 4px solid hsl(217, 91%, 60%);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  .nail-kyc-loading-text {
+    margin-top: 24px;
+    color: hsl(0, 0%, 98%);
+    font-size: 18px;
+    font-weight: 500;
+  }
+  
+  /* Finger Counter */
+  .nail-kyc-finger-counter {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .nail-kyc-counter-circle {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    background-color: rgba(0, 0, 0, 0.3);
+  }
+  
+  .nail-kyc-counter-circle.complete {
+    border-color: hsl(142, 76%, 36%);
+  }
+  
+  .nail-kyc-counter-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 48px;
+    font-weight: 700;
+    color: hsl(0, 0%, 98%);
+  }
+  
+  .nail-kyc-counter-total {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    color: hsl(0, 0%, 70%);
+  }
+  
+  .nail-kyc-counter-label {
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: hsl(0, 0%, 70%);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  /* Distance Indicator */
+  .nail-kyc-distance-indicator {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(12px);
+    transition: transform 0.3s;
+  }
+  
+  .nail-kyc-distance-indicator.too-far {
+    background-color: rgba(239, 68, 68, 0.8);
+  }
+  
+  .nail-kyc-distance-indicator.too-close {
+    background-color: rgba(245, 158, 11, 0.8);
+  }
+  
+  .nail-kyc-distance-indicator.perfect {
+    background-color: rgba(34, 197, 94, 0.8);
+  }
+  
+  .nail-kyc-distance-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .nail-kyc-distance-icon {
+    font-size: 30px;
+  }
+  
+  .nail-kyc-distance-text {
+    color: white;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  
+  /* Palm Warning */
+  .nail-kyc-palm-warning {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 72px;
+    background-color: rgba(167, 139, 250, 0.9);
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 0.85; }
+    50% { opacity: 1; }
+  }
+  
+  .nail-kyc-warning-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .nail-kyc-warning-icon {
+    font-size: 24px;
+  }
+  
+  .nail-kyc-warning-text {
+    color: white;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  
+  /* Blur Warning */
+  .nail-kyc-blur-warning {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(245, 158, 11, 0.8);
+    backdrop-filter: blur(12px);
+    padding: 12px 24px;
+    border-radius: 6px;
+  }
+  
+  .nail-kyc-blur-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .nail-kyc-blur-icon {
+    font-size: 20px;
+  }
+  
+  .nail-kyc-blur-text {
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  
+  /* Countdown */
+  .nail-kyc-countdown-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+  }
+  
+  .nail-kyc-countdown-circle {
+    width: 192px;
+    height: 192px;
+    border-radius: 50%;
+    background-color: rgba(96, 165, 250, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: pulse 1s ease-in-out infinite;
+  }
+  
+  .nail-kyc-countdown-number {
+    font-size: 96px;
+    font-weight: 700;
+    color: hsl(217, 91%, 60%);
+  }
+  
+  /* Instructions */
+  .nail-kyc-instructions {
+    position: absolute;
+    bottom: 96px;
+    left: 24px;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(12px);
+    padding: 16px 24px;
+    border-radius: 6px;
+    max-width: 320px;
+  }
+  
+  .nail-kyc-instruction-text {
+    font-size: 14px;
+    color: hsl(0, 0%, 98%);
+    line-height: 1.6;
+  }
+  
+  .nail-kyc-instruction-text:not(:first-child) {
+    margin-top: 4px;
+  }
+  
+  /* Captured Image View */
+  .nail-kyc-captured-container {
+    position: fixed;
+    inset: 0;
+    background-color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .nail-kyc-captured-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  
+  .nail-kyc-recapture-button {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: hsl(142, 76%, 36%);
+    color: white;
+    padding: 16px 32px;
+    border-radius: 6px;
+    font-size: 18px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .nail-kyc-recapture-button:hover {
+    background-color: hsl(142, 76%, 32%);
+  }
+  
