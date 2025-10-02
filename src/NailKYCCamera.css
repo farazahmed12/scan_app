@@ -1,0 +1,294 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  body {
+    overflow: hidden;
+  }
+  
+  .fullscreen-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: black;
+    overflow: hidden;
+  }
+  
+  .fullscreen-video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  
+  .fullscreen-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+  
+  .captured-fullscreen {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  
+  .loading-fullscreen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: white;
+    z-index: 100;
+  }
+  
+  .loader {
+    border: 8px solid rgba(255, 255, 255, 0.3);
+    border-top: 8px solid white;
+    border-radius: 50%;
+    width: 80px;
+    height: 80px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  .loading-fullscreen p {
+    font-size: 1.5rem;
+    font-weight: bold;
+  }
+  
+  /* Finger Counter */
+  .finger-counter {
+    position: absolute;
+    top: 30px;
+    left: 30px;
+    text-align: center;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 20px;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+  }
+  
+  .counter-circle {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    margin-bottom: 10px;
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.5);
+  }
+  
+  .counter-number {
+    font-size: 4rem;
+    font-weight: bold;
+    color: white;
+    line-height: 1;
+  }
+  
+  .counter-label {
+    font-size: 2rem;
+    color: rgba(255, 255, 255, 0.8);
+  }
+  
+  .counter-text {
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+  }
+  
+  /* Distance Indicator */
+  .distance-indicator {
+    position: absolute;
+    top: 30px;
+    right: 30px;
+    z-index: 10;
+    padding: 20px 40px;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    font-size: 1.5rem;
+    font-weight: bold;
+    backdrop-filter: blur(10px);
+    animation: fadeIn 0.3s ease-in;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  .distance-indicator.too-far {
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    box-shadow: 0 10px 30px rgba(239, 68, 68, 0.5);
+  }
+  
+  .distance-indicator.too-close {
+    background: rgba(251, 191, 36, 0.9);
+    color: white;
+    box-shadow: 0 10px 30px rgba(251, 191, 36, 0.5);
+  }
+  
+  .distance-indicator.perfect {
+    background: rgba(16, 185, 129, 0.9);
+    color: white;
+    box-shadow: 0 10px 30px rgba(16, 185, 129, 0.5);
+  }
+  
+  .distance-icon {
+    font-size: 2.5rem;
+  }
+  
+  .distance-text {
+    font-size: 1.8rem;
+  }
+  
+  /* Countdown */
+  .countdown-fullscreen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 15rem;
+    font-weight: bold;
+    color: #10b981;
+    z-index: 20;
+    text-shadow: 0 0 40px rgba(16, 185, 129, 0.8);
+    animation: countdownPulse 1s ease-in-out;
+  }
+  
+  @keyframes countdownPulse {
+    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+    50% { transform: translate(-50%, -50%) scale(1.2); }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  }
+  
+  /* Instructions */
+  .instructions-overlay {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 20px 40px;
+    border-radius: 15px;
+    backdrop-filter: blur(10px);
+  }
+  
+  .instructions-overlay p {
+    color: white;
+    font-size: 1.3rem;
+    margin: 5px 0;
+    font-weight: 500;
+  }
+  
+  /* Recapture Button */
+  .recapture-btn {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 1.5rem;
+    font-weight: bold;
+    padding: 20px 60px;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    z-index: 20;
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.5);
+    transition: all 0.3s ease;
+  }
+  
+  .recapture-btn:hover {
+    transform: translateX(-50%) scale(1.05);
+    box-shadow: 0 15px 40px rgba(102, 126, 234, 0.7);
+  }
+  
+  .recapture-btn:active {
+    transform: translateX(-50%) scale(0.95);
+  }
+  
+  /* Mobile Responsive */
+  @media (max-width: 768px) {
+    .finger-counter {
+      top: 15px;
+      left: 15px;
+      padding: 15px;
+    }
+    
+    .counter-circle {
+      width: 90px;
+      height: 90px;
+    }
+    
+    .counter-number {
+      font-size: 3rem;
+    }
+    
+    .counter-label {
+      font-size: 1.5rem;
+    }
+    
+    .counter-text {
+      font-size: 0.9rem;
+    }
+    
+    .distance-indicator {
+      top: 15px;
+      right: 15px;
+      padding: 15px 25px;
+      font-size: 1rem;
+    }
+    
+    .distance-icon {
+      font-size: 1.8rem;
+    }
+    
+    .distance-text {
+      font-size: 1.2rem;
+    }
+    
+    .countdown-fullscreen {
+      font-size: 10rem;
+    }
+    
+    .instructions-overlay {
+      bottom: 20px;
+      padding: 15px 25px;
+    }
+    
+    .instructions-overlay p {
+      font-size: 1rem;
+    }
+    
+    .recapture-btn {
+      bottom: 30px;
+      padding: 15px 40px;
+      font-size: 1.2rem;
+    }
+  }
