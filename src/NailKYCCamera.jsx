@@ -14,8 +14,11 @@ const checkDistance = (handSize, canvasHeight, history) => {
   const newHistory = [...history.slice(-4), relativeSize];
   const avgSize = newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
 
-  if (avgSize < 0.75) return "TOO FAR";
-  if (avgSize > 1.25) return "TOO CLOSE";
+  const TOO_FAR_THRESHOLD = 0.75;    // Increase if "TOO FAR" triggers too easily
+  const TOO_CLOSE_THRESHOLD = 1.25;  // Decrease if "TOO CLOSE" triggers too easily
+
+  if (avgSize < TOO_FAR_THRESHOLD) return "TOO FAR";
+  if (avgSize > TOO_CLOSE_THRESHOLD) return "TOO CLOSE";
   return "PERFECT";
 };
 
@@ -467,11 +470,19 @@ export default function NailKYCCamera() {
       {!isLoading && (
         <>
           <div style={styles.statusBar}>
-            <div style={styles.fingerCounter}>
-              <span style={styles.fingerIcon}>🖐️</span>
-              <span style={styles.counterText}>
-                {detectedFingerCount}/5 Fingers
-              </span>
+            <div style={styles.leftPanel}>
+              <div style={styles.fingerCounter}>
+                <span style={styles.fingerIcon}>🖐️</span>
+                <span style={styles.counterText}>
+                  {detectedFingerCount}/5 Fingers
+                </span>
+              </div>
+              <div style={styles.distanceValue}>
+                <span style={styles.distanceLabel}>Distance:</span>
+                <span style={styles.distanceNumber}>
+                  {dValue.toFixed(3)}
+                </span>
+              </div>
             </div>
             
             {isFlashOn && (
@@ -613,8 +624,13 @@ const styles = {
     right: "20px",
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     zIndex: 10,
+  },
+  leftPanel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
   },
   fingerCounter: {
     background: "rgba(0, 0, 0, 0.7)",
@@ -632,6 +648,26 @@ const styles = {
     color: "white",
     fontSize: "1rem",
     fontWeight: "600",
+  },
+  distanceValue: {
+    background: "rgba(0, 0, 0, 0.7)",
+    padding: "10px 18px",
+    borderRadius: "20px",
+    backdropFilter: "blur(10px)",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  distanceLabel: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: "0.85rem",
+    fontWeight: "500",
+  },
+  distanceNumber: {
+    color: "#10b981",
+    fontSize: "1rem",
+    fontWeight: "bold",
+    fontFamily: "monospace",
   },
   flashIndicator: {
     background: "rgba(251, 191, 36, 0.9)",
