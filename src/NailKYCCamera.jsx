@@ -15,7 +15,7 @@ const checkDistance = (handSize, canvasHeight, history) => {
   const avgSize = newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
 
   const TOO_FAR_THRESHOLD = 0.75;    // Increase if "TOO FAR" triggers too easily
-  const TOO_CLOSE_THRESHOLD = 1.25;  // Decrease if "TOO CLOSE" triggers too easily
+  const TOO_CLOSE_THRESHOLD = 1.1;  // Decrease if "TOO CLOSE" triggers too easily
 
   if (avgSize < TOO_FAR_THRESHOLD) return "TOO FAR";
   if (avgSize > TOO_CLOSE_THRESHOLD) return "TOO CLOSE";
@@ -147,8 +147,8 @@ export default function NailKYCCamera() {
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { exact: "environment" },
-          // facingMode:'user',
+          // facingMode: { exact: "environment" },
+          facingMode:'user',
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
           frameRate: { ideal: 30, max: 30 },
@@ -682,8 +682,8 @@ const styles = {
   },
   distanceIndicator: {
     position: "absolute",
-    top: "100px",
-    left: "50%",
+    top: "50px",
+    right: "0%",
     transform: "translateX(-50%)",
     zIndex: 10,
     padding: "15px 30px",
