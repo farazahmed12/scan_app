@@ -29,11 +29,11 @@ const drawNails = (ctx, landmarks) => {
   fingertips.forEach((tip, index) => {
     const [x, y] = landmarks[tip];
     ctx.strokeStyle = "#00ff00";
-    // ctx.lineWidth = 3;
+    ctx.lineWidth = 3;
     ctx.beginPath();
     // ctx.arc(x, y, 15, 0, 2 * Math.PI);
     // ctx.stroke();
-    ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
+    // ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
     ctx.fill();
     ctx.fillStyle = "#00ff00";
     ctx.font = "bold 16px Arial";
@@ -88,6 +88,7 @@ export default function NailKYCCamera() {
   const detectionLoopRef = useRef(null);
   const streamRef = useRef(null);
   const retryCountRef = useRef(0);
+  const isDetectionActiveRef = useRef(false);
 
   const [model, setModel] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -99,7 +100,6 @@ export default function NailKYCCamera() {
   const [detectedFingerCount, setDetectedFingerCount] = useState(0);
   const [sizeHistory, setSizeHistory] = useState([]);
   const [error, setError] = useState(null);
-  const [isDetectionActive, setIsDetectionActive] = useState(false);
 
   // Send message to React Native
   const sendToNative = useCallback((type, data = {}) => {
@@ -213,7 +213,7 @@ export default function NailKYCCamera() {
 
   // Hand detection loop with performance optimization
   const detectHand = useCallback(async () => {
-    if (!model || !videoRef.current || !isDetectionActive || capturedImage) {
+    if (!model || !videoRef.current || !isDetectionActiveRef.current || capturedImage) {
       return;
     }
 
@@ -282,7 +282,7 @@ export default function NailKYCCamera() {
     }
 
     detectionLoopRef.current = setTimeout(detectHand, 150);
-  }, [model, isDetectionActive, capturedImage, sizeHistory, sendToNative]);
+  }, [model, capturedImage, sizeHistory, sendToNative]);
 
   // Capture image
   const handleCapture = useCallback(() => {
@@ -307,7 +307,7 @@ export default function NailKYCCamera() {
       const imageData = capturedCanvas.toDataURL("image/jpeg", 0.95);
 
       setCapturedImage(imageData);
-      setIsDetectionActive(false);
+      isDetectionActiveRef.current = false;
       
       // Turn off flash after capture
 
@@ -334,7 +334,7 @@ export default function NailKYCCamera() {
     setError(null);
     
     await setupCamera();
-    setIsDetectionActive(true);
+    isDetectionActiveRef.current = true;
 
     turnOnFlash()
     sendToNative("RESET_CAPTURE");
@@ -357,7 +357,7 @@ export default function NailKYCCamera() {
             resetCapture();
             break;
           case "TOGGLE_DETECTION":
-            setIsDetectionActive(data.enabled);
+            isDetectionActiveRef.current = data.enabled;
             break;
           default:
             break;
@@ -398,17 +398,18 @@ export default function NailKYCCamera() {
   // Start detection when model is ready
   useEffect(() => {
     if (model && !isLoading && !capturedImage) {
-      setIsDetectionActive(true);
+      isDetectionActiveRef.current = true;
       detectHand();
     }
 
     return () => {
-      setIsDetectionActive(false);
+      isDetectionActiveRef.current = false;
       if (detectionLoopRef.current) {
         clearTimeout(detectionLoopRef.current);
       }
     };
   }, [model, isLoading, capturedImage, detectHand]);
+
 
   // Error state
   if (error) {
