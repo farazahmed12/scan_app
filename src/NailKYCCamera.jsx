@@ -1,32 +1,22 @@
 import * as handpose from "@tensorflow-models/handpose";
 import * as tf from "@tensorflow/tfjs";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 const calculateHandSize = (hand) => {
   const bb = hand.boundingBox;
   const handHeight = bb.bottomRight[1] - bb.topLeft[1];
   const handWidth = bb.bottomRight[0] - bb.topLeft[0];
-  return Math.max(handHeight, handWidth); // Max dimension for orientation-agnostic size
+  return Math.max(handHeight, handWidth);
 };
 
-// Updated checkDistance (with new thresholds, smoothing, confidence)
 const checkDistance = (handSize, canvasHeight, history) => {
   const relativeSize = handSize / canvasHeight;
-
-  // Smoothing: Add to history (keep last 5)
   const newHistory = [...history.slice(-4), relativeSize];
-  const avgSize =
-    newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
+  const avgSize = newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
 
-  console.log("avgRelativeSize ---->", avgSize, handSize, canvasHeight);
-
-  if (avgSize < 0.75) {
-    return "TOO FAR";
-  } else if (avgSize > 1.25) {
-    return "TOO CLOSE";
-  } else {
-    return "PERFECT";
-  }
+  if (avgSize < 0.75) return "TOO FAR";
+  if (avgSize > 1.25) return "TOO CLOSE";
+  return "PERFECT";
 };
 
 const drawNails = (ctx, landmarks) => {
@@ -35,19 +25,16 @@ const drawNails = (ctx, landmarks) => {
 
   fingertips.forEach((tip, index) => {
     const [x, y] = landmarks[tip];
-
     ctx.strokeStyle = "#00ff00";
-    // ctx.lineWidth = 4;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    // ctx.arc(x, y, 20, 0, 2 * Math.PI);
-    // ctx.stroke();
-
-    ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+    ctx.arc(x, y, 15, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
     ctx.fill();
-
     ctx.fillStyle = "#00ff00";
-    ctx.font = "bold 18px Arial";
-    ctx.fillText(fingerNames[index], x - 30, y - 30);
+    ctx.font = "bold 16px Arial";
+    ctx.fillText(fingerNames[index], x - 25, y - 25);
   });
 };
 
@@ -66,6 +53,7 @@ const detectFingers = (landmarks) => {
     const tip = landmarks[tipIndex];
     const middle = landmarks[middleIndex];
     const base = landmarks[baseIndex];
+    const wrist = landmarks[0];
 
     let isExtended = false;
 
@@ -77,7 +65,6 @@ const detectFingers = (landmarks) => {
       isExtended = isTipAboveMiddle && isMiddleAboveBase;
     }
 
-    const wrist = landmarks[0];
     const wristToTip = Math.sqrt(
       Math.pow(tip[0] - wrist[0], 2) + Math.pow(tip[1] - wrist[1], 2)
     );
@@ -95,87 +82,39 @@ export default function NailKYCCamera() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const capturedCanvasRef = useRef(null);
+  const detectionLoopRef = useRef(null);
+  const streamRef = useRef(null);
+  const retryCountRef = useRef(0);
 
   const [model, setModel] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [distanceStatus, setDistanceStatus] = useState("");
   const [capturedImage, setCapturedImage] = useState(null);
   const [isFlashOn, setIsFlashOn] = useState(false);
   const [dValue, setDValue] = useState(0);
-  const [sizeHistory, setSizeHistory] = useState([]); // Array for recent relative sizes
+  const [detectedFingerCount, setDetectedFingerCount] = useState(0);
+  const [sizeHistory, setSizeHistory] = useState([]);
+  const [error, setError] = useState(null);
+  const [isDetectionActive, setIsDetectionActive] = useState(false);
 
-  // In detectHand (inside useEffect)
-  const detectHand = async () => {
-    try {
-      if (videoRef.current.readyState === 4) {
-        const predictions = await model.estimateHands(videoRef.current);
-
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext("2d");
-
-        if (canvas.width !== videoRef.current.videoWidth) {
-          canvas.width = videoRef.current.videoWidth;
-          canvas.height = videoRef.current.videoHeight;
-        }
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        if (predictions.length > 0) {
-          const hand = predictions[0];
-
-          // Confidence filter: Ignore low-quality detections
-          if (hand.handInViewConfidence < 0.8) {
-            setDistanceStatus("");
-            setSizeHistory([]); // Reset history on bad detection
-            return;
-          }
-
-          const landmarks = hand.landmarks;
-          const handSize = calculateHandSize(hand);
-          const detectedFingers = detectFingers(landmarks); // Your existing function
-
-          // Only set status if full hand visible (for NailKYC precision)
-          if (detectedFingers.length === 5) {
-            const distance = checkDistance(
-              handSize,
-              canvas.height,
-              sizeHistory
-            );
-            setDistanceStatus(distance);
-            setSizeHistory([
-              ...sizeHistory.slice(-4),
-              handSize / canvas.height,
-            ]); // Update history
-            setDValue(handSize / canvas.height);
-          } else {
-            setDistanceStatus("SHOW FULL HAND"); // New status for feedback
-          }
-
-          drawNails(ctx, landmarks);
-        } else {
-          setDistanceStatus("");
-          setSizeHistory([]);
-        }
-      }
-    } catch (err) {
-      console.error("Detection error:", err);
+  // Send message to React Native
+  const sendToNative = useCallback((type, data = {}) => {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(
+        JSON.stringify({ type, ...data })
+      );
     }
+  }, []);
 
-    // Throttle for mobile efficiency: Detect every 200ms instead of RAF
-    setTimeout(detectHand, 200);
-  };
-
-  const turnOnFlash = async () => {
-    if (isFlashOn) return; // Already on
-
-    // Check if running in React Native WebView
-    if (window.ReactNativeWebView && window.toggleNativeTorch) {
-      window.toggleNativeTorch();
-      setIsFlashOn(true);
+  // Toggle flash/torch
+  const toggleFlash = useCallback(async (turnOn = true) => {
+    if (window.ReactNativeWebView) {
+      sendToNative("TOGGLE_TORCH", { enabled: turnOn });
+      setIsFlashOn(turnOn);
     } else {
-      // Fallback to browser API
       try {
-        const stream = videoRef.current?.srcObject;
+        const stream = streamRef.current;
         if (!stream) return;
 
         const track = stream.getVideoTracks()[0];
@@ -183,80 +122,239 @@ export default function NailKYCCamera() {
 
         if (capabilities.torch) {
           await track.applyConstraints({
-            advanced: [{ torch: true }],
+            advanced: [{ torch: turnOn }],
           });
-          setIsFlashOn(true);
+          setIsFlashOn(turnOn);
         }
       } catch (err) {
-        console.error("Flash on error:", err);
+        console.error("Flash toggle error:", err);
       }
     }
-  };
+  }, [sendToNative]);
 
-  useEffect(() => {
-    let animationFrame;
+  // Setup camera with retry logic
+  const setupCamera = useCallback(async (retryCount = 0) => {
+    try {
+      setLoadingProgress(20);
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { exact: "environment" },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 30 },
+        },
+      });
 
-    const setupCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { exact: "environment" },
+      streamRef.current = stream;
+      setLoadingProgress(40);
 
-            // Mobile-optimized resolution for better performance
-            width: { ideal: 640, max: 1280 },
-            height: { ideal: 480, max: 720 },
-            // frameRate: { ideal: 15, max: 20 },
-            frameRate: { ideal: 30, max: 40 },
-          },
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        
+        await new Promise((resolve, reject) => {
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current.play()
+              .then(resolve)
+              .catch(reject);
+          };
+          
+          setTimeout(() => reject(new Error("Video load timeout")), 10000);
         });
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current.play();
-          };
+        setLoadingProgress(60);
+        sendToNative("CAMERA_READY");
+        retryCountRef.current = 0;
+      }
+    } catch (err) {
+      console.error("Camera setup error:", err);
+      
+      if (retryCount < 3) {
+        setTimeout(() => setupCamera(retryCount + 1), 2000);
+      } else {
+        setError("Camera access failed. Please check permissions.");
+        sendToNative("CAMERA_ERROR", { error: err.message });
+      }
+    }
+  }, [sendToNative]);
 
-          // Check if flash/torch is supported (only if not in React Native)
-          if (!window.ReactNativeWebView) {
-            const track = stream.getVideoTracks()[0];
-            const capabilities = track.getCapabilities();
+  // Load TensorFlow model
+  const loadModel = useCallback(async () => {
+    try {
+      setLoadingProgress(70);
+      await tf.ready();
+      await tf.setBackend("webgl");
+      
+      setLoadingProgress(85);
+      const handposeModel = await handpose.load();
+      
+      setModel(handposeModel);
+      setLoadingProgress(100);
+      setIsLoading(false);
+      sendToNative("MODEL_LOADED");
+      
+      // Turn on flash after model loads
+      setTimeout(() => toggleFlash(true), 500);
+    } catch (err) {
+      console.error("Model loading error:", err);
+      setError("AI model failed to load. Please restart.");
+      sendToNative("MODEL_ERROR", { error: err.message });
+    }
+  }, [sendToNative, toggleFlash]);
 
-            if (capabilities.torch) {
-              // Flash support detected
-            }
-          }
+  // Hand detection loop with performance optimization
+  const detectHand = useCallback(async () => {
+    if (!model || !videoRef.current || !isDetectionActive || capturedImage) {
+      return;
+    }
+
+    try {
+      if (videoRef.current.readyState !== 4) {
+        detectionLoopRef.current = setTimeout(detectHand, 100);
+        return;
+      }
+
+      const predictions = await model.estimateHands(videoRef.current);
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+
+      if (canvas.width !== videoRef.current.videoWidth) {
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (predictions.length > 0) {
+        const hand = predictions[0];
+
+        if (hand.handInViewConfidence < 0.75) {
+          setDistanceStatus("");
+          setDetectedFingerCount(0);
+          setSizeHistory([]);
+          detectionLoopRef.current = setTimeout(detectHand, 200);
+          return;
         }
-      } catch (err) {
-        console.error("Camera error:", err);
+
+        const landmarks = hand.landmarks;
+        const handSize = calculateHandSize(hand);
+        const detectedFingers = detectFingers(landmarks);
+        
+        setDetectedFingerCount(detectedFingers.length);
+
+        if (detectedFingers.length === 5) {
+          const distance = checkDistance(handSize, canvas.height, sizeHistory);
+          setDistanceStatus(distance);
+          setSizeHistory(prev => [...prev.slice(-4), handSize / canvas.height]);
+          setDValue(handSize / canvas.height);
+          
+          drawNails(ctx, landmarks);
+          
+          sendToNative("HAND_DETECTED", {
+            fingerCount: 5,
+            distance: distance,
+            canCapture: distance === "PERFECT"
+          });
+        } else {
+          setDistanceStatus("SHOW ALL FINGERS");
+          sendToNative("HAND_DETECTED", {
+            fingerCount: detectedFingers.length,
+            distance: "INCOMPLETE",
+            canCapture: false
+          });
+        }
+      } else {
+        setDistanceStatus("");
+        setDetectedFingerCount(0);
+        setSizeHistory([]);
       }
-    };
+    } catch (err) {
+      console.error("Detection error:", err);
+    }
 
-    const loadModel = async () => {
-      try {
-        await tf.ready();
-        // Set TensorFlow backend for mobile optimization
-        await tf.setBackend("webgl");
+    detectionLoopRef.current = setTimeout(detectHand, 150);
+  }, [model, isDetectionActive, capturedImage, sizeHistory, sendToNative]);
 
-        const handposeModel = await handpose.load();
-        setModel(handposeModel);
-        setIsLoading(false);
+  // Capture image
+  const handleCapture = useCallback(() => {
+    if (distanceStatus !== "PERFECT") {
+      sendToNative("CAPTURE_FAILED", { 
+        reason: "Distance not perfect" 
+      });
+      return;
+    }
 
-        // Turn on flashlight when model is loaded
-        turnOnFlash();
-      } catch (err) {
-        console.error("Model error:", err);
-      }
-    };
+    try {
+      const canvas = canvasRef.current;
+      const capturedCanvas = capturedCanvasRef.current;
+      const ctx = capturedCanvas.getContext("2d");
+      const video = videoRef.current;
 
-    setupCamera();
-    loadModel();
+      capturedCanvas.width = canvas.width;
+      capturedCanvas.height = canvas.height;
 
-    // Listen for messages from React Native
+      ctx.drawImage(video, 0, 0, capturedCanvas.width, capturedCanvas.height);
+
+      const imageData = capturedCanvas.toDataURL("image/jpeg", 0.95);
+
+      setCapturedImage(imageData);
+      setIsDetectionActive(false);
+      
+      // Turn off flash after capture
+      toggleFlash(false);
+
+      sendToNative("IMAGE_CAPTURED", {
+        imageData: imageData,
+        dimensions: {
+          width: capturedCanvas.width,
+          height: capturedCanvas.height
+        }
+      });
+    } catch (err) {
+      console.error("Capture error:", err);
+      sendToNative("CAPTURE_ERROR", { error: err.message });
+    }
+  }, [distanceStatus, sendToNative, toggleFlash]);
+
+  // Reset and recapture
+  const resetCapture = useCallback(async () => {
+    setCapturedImage(null);
+    setDistanceStatus("");
+    setDValue(0);
+    setDetectedFingerCount(0);
+    setSizeHistory([]);
+    setError(null);
+    
+    await setupCamera();
+    setIsDetectionActive(true);
+    
+    setTimeout(() => toggleFlash(true), 500);
+    sendToNative("RESET_CAPTURE");
+  }, [setupCamera, toggleFlash, sendToNative]);
+
+  // Listen to messages from React Native
+  useEffect(() => {
     const handleMessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.type === "TORCH_STATE") {
-          setIsFlashOn(data.isOn);
+        const data = typeof event.data === 'string' 
+          ? JSON.parse(event.data) 
+          : event.data;
+
+        switch (data.type) {
+          case "TORCH_STATE":
+            setIsFlashOn(data.isOn);
+            break;
+          case "TRIGGER_CAPTURE":
+            handleCapture();
+            break;
+          case "RESET_CAMERA":
+            resetCapture();
+            break;
+          case "TOGGLE_DETECTION":
+            setIsDetectionActive(data.enabled);
+            break;
+          default:
+            break;
         }
       } catch (error) {
         console.error("Message handling error:", error);
@@ -265,105 +363,72 @@ export default function NailKYCCamera() {
 
     if (window.ReactNativeWebView) {
       window.addEventListener("message", handleMessage);
-      document.addEventListener("message", handleMessage); // For iOS
+      document.addEventListener("message", handleMessage);
     }
 
     return () => {
-      if (animationFrame) cancelAnimationFrame(animationFrame);
-      if (videoRef.current?.srcObject) {
-        videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-      }
       if (window.ReactNativeWebView) {
         window.removeEventListener("message", handleMessage);
         document.removeEventListener("message", handleMessage);
       }
     };
-  }, []);
+  }, [handleCapture, resetCapture]);
+
+  // Initialize camera and model
   useEffect(() => {
-    if (!model || !videoRef.current || isLoading) return;
+    setupCamera();
+    loadModel();
 
-    detectHand(); // Start throttled loop
+    return () => {
+      if (detectionLoopRef.current) {
+        clearTimeout(detectionLoopRef.current);
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      toggleFlash(false);
+    };
+  }, []);
 
-    return () => {}; // No need for cancel as setTimeout is self-managing
-  }, [model, isLoading, capturedImage]);
-
-  const handleCapture = () => {
-    if (distanceStatus !== "PERFECT") {
-      alert("Please adjust your distance! Hand should be at perfect distance.");
-      return;
+  // Start detection when model is ready
+  useEffect(() => {
+    if (model && !isLoading && !capturedImage) {
+      setIsDetectionActive(true);
+      detectHand();
     }
 
-    // Capture the image from the canvas (which shows exactly what's on screen)
-    const canvas = canvasRef.current;
-    const capturedCanvas = capturedCanvasRef.current;
-    const ctx = capturedCanvas.getContext("2d");
-
-    // Set captured canvas to match the display canvas dimensions
-    capturedCanvas.width = canvas.width;
-    capturedCanvas.height = canvas.height;
-
-    // Draw the video frame to match the canvas display
-    const video = videoRef.current;
-    ctx.drawImage(video, 0, 0, capturedCanvas.width, capturedCanvas.height);
-
-    const imageData = capturedCanvas.toDataURL("image/png");
-
-    // Console log the image data for backend
-    console.log("=== CAPTURED IMAGE FOR BACKEND ===");
-    console.log("Image Data URL:", imageData);
-    console.log("Image Size:", imageData.length, "characters");
-    console.log(
-      "Image Dimensions:",
-      capturedCanvas.width,
-      "x",
-      capturedCanvas.height
-    );
-    console.log("Video Dimensions:", video.videoWidth, "x", video.videoHeight);
-    console.log("Canvas Dimensions:", canvas.width, "x", canvas.height);
-    console.log("================================");
-
-    setCapturedImage(imageData);
-  };
-
-  const resetCapture = () => {
-    setCapturedImage(null);
-    setDistanceStatus("");
-    setDValue(0);
-
-    // Restart the camera stream
-    const setupCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { exact: "environment" },
-            // Mobile-optimized resolution for better performance
-            width: { ideal: 640, max: 1280 },
-            height: { ideal: 480, max: 720 },
-            frameRate: { ideal: 30, max: 40 },
-          },
-        });
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current.play();
-          };
-        }
-      } catch (err) {
-        console.error("Camera restart error --->", err);
+    return () => {
+      setIsDetectionActive(false);
+      if (detectionLoopRef.current) {
+        clearTimeout(detectionLoopRef.current);
       }
     };
+  }, [model, isLoading, capturedImage, detectHand]);
 
-    setupCamera();
+  // Error state
+  if (error) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.errorContainer}>
+          <div style={styles.errorIcon}>⚠️</div>
+          <p style={styles.errorText}>{error}</p>
+          <button onClick={resetCapture} style={styles.retryBtn}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-    // Turn flashlight back on when returning to capture mode
-    turnOnFlash();
-  };
-
+  // Captured image view
   if (capturedImage) {
     return (
       <div style={styles.container}>
         <img src={capturedImage} alt="Captured" style={styles.capturedImage} />
+        <div style={styles.captureSuccess}>
+          <span style={styles.successIcon}>✓</span>
+          <span style={styles.successText}>Image Captured</span>
+        </div>
         <button onClick={resetCapture} style={styles.recaptureBtn}>
           Capture Again
         </button>
@@ -371,7 +436,7 @@ export default function NailKYCCamera() {
     );
   }
 
-  const isReadyToCapture = distanceStatus === "PERFECT";
+  const isReadyToCapture = distanceStatus === "PERFECT" && detectedFingerCount === 5;
 
   return (
     <div style={styles.container}>
@@ -381,15 +446,39 @@ export default function NailKYCCamera() {
 
       {isLoading && (
         <div style={styles.loading}>
-          <div style={styles.loader}></div>
-          <p style={styles.loadingText}>Loading AI Model...</p>
+          <div style={styles.loaderContainer}>
+            <div style={styles.loader}></div>
+            <div style={styles.progressBar}>
+              <div 
+                style={{
+                  ...styles.progressFill,
+                  width: `${loadingProgress}%`
+                }}
+              />
+            </div>
+          </div>
+          <p style={styles.loadingText}>
+            {loadingProgress < 60 ? "Initializing Camera..." : 
+             loadingProgress < 100 ? "Loading AI Model..." : "Ready!"}
+          </p>
         </div>
       )}
 
       {!isLoading && (
         <>
-          <div style={styles.fingerCounter}>
-            <p style={styles.counterText}>D Value: {dValue?.toFixed(2)}</p>
+          <div style={styles.statusBar}>
+            <div style={styles.fingerCounter}>
+              <span style={styles.fingerIcon}>🖐️</span>
+              <span style={styles.counterText}>
+                {detectedFingerCount}/5 Fingers
+              </span>
+            </div>
+            
+            {isFlashOn && (
+              <div style={styles.flashIndicator}>
+                <span style={styles.flashIcon}>💡</span>
+              </div>
+            )}
           </div>
 
           {distanceStatus && (
@@ -399,6 +488,7 @@ export default function NailKYCCamera() {
                 ...(distanceStatus === "TOO FAR" && styles.tooFar),
                 ...(distanceStatus === "TOO CLOSE" && styles.tooClose),
                 ...(distanceStatus === "PERFECT" && styles.perfect),
+                ...(distanceStatus === "SHOW ALL FINGERS" && styles.showFingers),
               }}
             >
               {distanceStatus === "TOO FAR" && (
@@ -416,7 +506,13 @@ export default function NailKYCCamera() {
               {distanceStatus === "PERFECT" && (
                 <>
                   <span style={styles.distanceIcon}>✓</span>
-                  <span style={styles.distanceText}>Perfect Distance</span>
+                  <span style={styles.distanceText}>Perfect!</span>
+                </>
+              )}
+              {distanceStatus === "SHOW ALL FINGERS" && (
+                <>
+                  <span style={styles.distanceIcon}>🖐️</span>
+                  <span style={styles.distanceText}>Show All 5 Fingers</span>
                 </>
               )}
             </div>
@@ -424,6 +520,7 @@ export default function NailKYCCamera() {
 
           <button
             onClick={handleCapture}
+            disabled={!isReadyToCapture}
             style={{
               ...styles.captureBtn,
               ...(isReadyToCapture
@@ -431,7 +528,7 @@ export default function NailKYCCamera() {
                 : styles.captureBtnDisabled),
             }}
           >
-            {isReadyToCapture ? "Capture" : "Adjust Position"}
+            {isReadyToCapture ? "📸 Capture" : "Position Your Hand"}
           </button>
         </>
       )}
@@ -479,6 +576,9 @@ const styles = {
     zIndex: 100,
     padding: "0 20px",
   },
+  loaderContainer: {
+    marginBottom: "20px",
+  },
   loader: {
     border: "6px solid rgba(255, 255, 255, 0.3)",
     borderTop: "6px solid white",
@@ -488,59 +588,71 @@ const styles = {
     animation: "spin 1s linear infinite",
     margin: "0 auto 15px",
   },
+  progressBar: {
+    width: "200px",
+    height: "8px",
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    borderRadius: "4px",
+    overflow: "hidden",
+    margin: "0 auto",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#10b981",
+    transition: "width 0.3s ease",
+  },
   loadingText: {
     fontSize: "1.2rem",
     fontWeight: "bold",
+    marginTop: "10px",
   },
-  fingerCounter: {
+  statusBar: {
     position: "absolute",
     top: "20px",
     left: "20px",
-    textAlign: "center",
+    right: "20px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
     zIndex: 10,
+  },
+  fingerCounter: {
     background: "rgba(0, 0, 0, 0.7)",
-    padding: "5px",
-    borderRadius: "15px",
+    padding: "12px 20px",
+    borderRadius: "25px",
     backdropFilter: "blur(10px)",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "column",
+    gap: "10px",
   },
-  counterCircle: {
-    width: "70px",
-    height: "70px",
-    borderRadius: "50%",
-    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "column",
-    marginBottom: "8px",
-    boxShadow: "0 10px 30px rgba(102, 126, 234, 0.5)",
-  },
-  counterNumber: {
-    fontSize: "1.3rem",
-    fontWeight: "bold",
-    color: "white",
-    lineHeight: 1,
-  },
-  counterLabel: {
-    fontSize: "0.8rem",
-    color: "rgba(255, 255, 255, 0.8)",
+  fingerIcon: {
+    fontSize: "1.5rem",
   },
   counterText: {
     color: "white",
-    fontSize: "0.85rem",
-    fontWeight: 600,
-    margin: 0,
+    fontSize: "1rem",
+    fontWeight: "600",
+  },
+  flashIndicator: {
+    background: "rgba(251, 191, 36, 0.9)",
+    padding: "10px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "45px",
+    height: "45px",
+  },
+  flashIcon: {
+    fontSize: "1.3rem",
   },
   distanceIndicator: {
     position: "absolute",
-    top: "20px",
-    right: "20px",
+    top: "100px",
+    left: "50%",
+    transform: "translateX(-50%)",
     zIndex: 10,
-    padding: "15px 25px",
+    padding: "15px 30px",
     borderRadius: "12px",
     display: "flex",
     alignItems: "center",
@@ -564,6 +676,11 @@ const styles = {
     color: "white",
     boxShadow: "0 10px 30px rgba(16, 185, 129, 0.5)",
   },
+  showFingers: {
+    background: "rgba(59, 130, 246, 0.9)",
+    color: "white",
+    boxShadow: "0 10px 30px rgba(59, 130, 246, 0.5)",
+  },
   distanceIcon: {
     fontSize: "2rem",
   },
@@ -578,13 +695,13 @@ const styles = {
     color: "white",
     fontSize: "1.2rem",
     fontWeight: "bold",
-    padding: "16px 50px",
+    padding: "18px 50px",
     border: "none",
     borderRadius: "50px",
     cursor: "pointer",
     zIndex: 20,
     transition: "all 0.3s ease",
-    minWidth: "200px",
+    minWidth: "250px",
     textAlign: "center",
   },
   captureBtnReady: {
@@ -595,6 +712,7 @@ const styles = {
     background: "rgba(107, 114, 128, 0.8)",
     boxShadow: "0 10px 30px rgba(107, 114, 128, 0.3)",
     cursor: "not-allowed",
+    opacity: 0.7,
   },
   recaptureBtn: {
     position: "absolute",
@@ -605,14 +723,65 @@ const styles = {
     color: "white",
     fontSize: "1.2rem",
     fontWeight: "bold",
-    padding: "16px 50px",
+    padding: "18px 50px",
     border: "none",
     borderRadius: "50px",
     cursor: "pointer",
     zIndex: 20,
     boxShadow: "0 10px 30px rgba(102, 126, 234, 0.5)",
     transition: "all 0.3s ease",
-    minWidth: "200px",
+    minWidth: "250px",
     textAlign: "center",
+  },
+  captureSuccess: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    background: "rgba(16, 185, 129, 0.95)",
+    color: "white",
+    padding: "20px 40px",
+    borderRadius: "15px",
+    display: "flex",
+    alignItems: "center",
+    gap: "15px",
+    boxShadow: "0 10px 30px rgba(16, 185, 129, 0.5)",
+  },
+  successIcon: {
+    fontSize: "2.5rem",
+  },
+  successText: {
+    fontSize: "1.3rem",
+    fontWeight: "bold",
+  },
+  errorContainer: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    textAlign: "center",
+    color: "white",
+    zIndex: 100,
+    padding: "0 30px",
+  },
+  errorIcon: {
+    fontSize: "4rem",
+    marginBottom: "20px",
+  },
+  errorText: {
+    fontSize: "1.2rem",
+    marginBottom: "30px",
+    lineHeight: "1.5",
+  },
+  retryBtn: {
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    color: "white",
+    fontSize: "1.1rem",
+    fontWeight: "bold",
+    padding: "15px 40px",
+    border: "none",
+    borderRadius: "50px",
+    cursor: "pointer",
+    boxShadow: "0 10px 30px rgba(102, 126, 234, 0.5)",
   },
 };
