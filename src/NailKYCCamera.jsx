@@ -686,7 +686,7 @@ const styles = {
     right: "0%",
     transform: "translateX(-50%)",
     zIndex: 10,
-    padding: "15px 30px",
+    padding: "10px",
     borderRadius: "12px",
     display: "flex",
     alignItems: "center",
@@ -716,10 +716,10 @@ const styles = {
     boxShadow: "0 10px 30px rgba(59, 130, 246, 0.5)",
   },
   distanceIcon: {
-    fontSize: "2rem",
+    fontSize: "0.8rem",
   },
   distanceText: {
-    fontSize: "1.2rem",
+    fontSize: "0.8rem",
   },
   captureBtn: {
     position: "absolute",
