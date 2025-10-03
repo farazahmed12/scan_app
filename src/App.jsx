@@ -1,5 +1,5 @@
 import './App.css'
-import NailKYCCamera from './replit/NailKYCCamera'
+import NailKYCCamera from './NailKYCCamera'
 
 function App() {
 
