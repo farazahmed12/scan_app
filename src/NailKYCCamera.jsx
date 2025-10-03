@@ -28,10 +28,10 @@ const drawNails = (ctx, landmarks) => {
 
   fingertips.forEach((tip, index) => {
     const [x, y] = landmarks[tip];
-    // ctx.strokeStyle = "#00ff00";
+    ctx.strokeStyle = "#00ff00";
     // ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(x, y, 15, 0, 2 * Math.PI);
+    // ctx.arc(x, y, 15, 0, 2 * Math.PI);
     // ctx.stroke();
     // ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
     ctx.fill();
