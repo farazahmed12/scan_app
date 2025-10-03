@@ -110,14 +110,19 @@ export default function NailKYCCamera() {
     }
   }, []);
 
-  // Toggle flash/torch
-  const toggleFlash = useCallback(async (turnOn = true) => {
-    if (window.ReactNativeWebView) {
-      sendToNative("TOGGLE_TORCH", { enabled: turnOn });
-      setIsFlashOn(turnOn);
+
+
+  const turnOnFlash = async () => {
+    if (isFlashOn) return; // Already on
+
+    // Check if running in React Native WebView
+    if (window.ReactNativeWebView && window.toggleNativeTorch) {
+      window.toggleNativeTorch();
+      setIsFlashOn(true);
     } else {
+      // Fallback to browser API
       try {
-        const stream = streamRef.current;
+        const stream = videoRef.current?.srcObject;
         if (!stream) return;
 
         const track = stream.getVideoTracks()[0];
@@ -125,15 +130,15 @@ export default function NailKYCCamera() {
 
         if (capabilities.torch) {
           await track.applyConstraints({
-            advanced: [{ torch: turnOn }],
+            advanced: [{ torch: true }],
           });
-          setIsFlashOn(turnOn);
+          setIsFlashOn(true);
         }
       } catch (err) {
-        console.error("Flash toggle error:", err);
+        console.error("Flash on error:", err);
       }
     }
-  }, [sendToNative]);
+  };
 
   // Setup camera with retry logic
   const setupCamera = useCallback(async (retryCount = 0) => {
@@ -143,6 +148,7 @@ export default function NailKYCCamera() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { exact: "environment" },
+          // facingMode:'user',
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
           frameRate: { ideal: 30, max: 30 },
@@ -197,13 +203,13 @@ export default function NailKYCCamera() {
       sendToNative("MODEL_LOADED");
       
       // Turn on flash after model loads
-      setTimeout(() => toggleFlash(true), 500);
+      turnOnFlash()
     } catch (err) {
       console.error("Model loading error:", err);
       setError("AI model failed to load. Please restart.");
       sendToNative("MODEL_ERROR", { error: err.message });
     }
-  }, [sendToNative, toggleFlash]);
+  }, [sendToNative, turnOnFlash]);
 
   // Hand detection loop with performance optimization
   const detectHand = useCallback(async () => {
@@ -304,7 +310,6 @@ export default function NailKYCCamera() {
       setIsDetectionActive(false);
       
       // Turn off flash after capture
-      toggleFlash(false);
 
       sendToNative("IMAGE_CAPTURED", {
         imageData: imageData,
@@ -317,7 +322,7 @@ export default function NailKYCCamera() {
       console.error("Capture error:", err);
       sendToNative("CAPTURE_ERROR", { error: err.message });
     }
-  }, [distanceStatus, sendToNative, toggleFlash]);
+  }, [distanceStatus, sendToNative, ]);
 
   // Reset and recapture
   const resetCapture = useCallback(async () => {
@@ -330,10 +335,10 @@ export default function NailKYCCamera() {
     
     await setupCamera();
     setIsDetectionActive(true);
-    
-    setTimeout(() => toggleFlash(true), 500);
+
+    turnOnFlash()
     sendToNative("RESET_CAPTURE");
-  }, [setupCamera, toggleFlash, sendToNative]);
+  }, [setupCamera, sendToNative]);
 
   // Listen to messages from React Native
   useEffect(() => {
@@ -344,9 +349,7 @@ export default function NailKYCCamera() {
           : event.data;
 
         switch (data.type) {
-          case "TORCH_STATE":
-            setIsFlashOn(data.isOn);
-            break;
+        
           case "TRIGGER_CAPTURE":
             handleCapture();
             break;
@@ -389,7 +392,6 @@ export default function NailKYCCamera() {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
-      toggleFlash(false);
     };
   }, []);
 
@@ -485,11 +487,7 @@ export default function NailKYCCamera() {
               </div>
             </div>
             
-            {isFlashOn && (
-              <div style={styles.flashIndicator}>
-                <span style={styles.flashIcon}>💡</span>
-              </div>
-            )}
+           
           </div>
 
           {distanceStatus && (
