@@ -33,9 +33,9 @@ const drawNails = (ctx, landmarks) => {
     ctx.beginPath();
     // ctx.arc(x, y, 15, 0, 2 * Math.PI);
     // ctx.stroke();
-    // ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
+    ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
     ctx.fill();
-    // ctx.fillStyle = "#00ff00";
+    ctx.fillStyle = "#00ff00";
     ctx.font = "bold 16px Arial";
     ctx.fillText(fingerNames[index], x - 25, y - 25);
   });
@@ -147,8 +147,8 @@ export default function NailKYCCamera() {
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { exact: "environment" },
-          // facingMode:'user',
+          // facingMode: { exact: "environment" },
+          facingMode:'user',
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
           frameRate: { ideal: 30, max: 30 },
