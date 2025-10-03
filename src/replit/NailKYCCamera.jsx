@@ -170,7 +170,8 @@ export default function NailKYCCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { 
-            facingMode: 'user',
+            // facingMode: 'user',
+            facingMode: { exact: "environment" },
             width: { ideal: 1920 },
             height: { ideal: 1080 }
           }
