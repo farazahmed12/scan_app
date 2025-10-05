@@ -1,10 +1,10 @@
 import './App.css'
-import NailKYCCamera from './NailKYCCamera'
+import CircleDetect from './coin/CircleDetect'
 
 function App() {
 
   return (
-   <NailKYCCamera />
+   <CircleDetect />
 
   )
 

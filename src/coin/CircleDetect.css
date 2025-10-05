@@ -1,0 +1,137 @@
+.app-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  background-color: #1a1a1a;
+  color: white;
+  min-height: 100vh;
+}
+
+.video-container {
+  position: relative;
+  margin: 20px 0;
+  border: 2px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.video-feed {
+  display: block;
+  width: 100%;
+  max-width: 1280px;
+  height: auto;
+  background-color: #000;
+}
+
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.controls {
+  margin: 20px 0;
+}
+
+.controls button {
+  padding: 12px 24px;
+  font-size: 16px;
+  background-color: #007acc;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.controls button:hover:not(:disabled) {
+  background-color: #005a9e;
+}
+
+.controls button:disabled {
+  background-color: #666;
+  cursor: not-allowed;
+}
+
+.status {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #2a2a2a;
+  border-radius: 4px;
+  min-width: 300px;
+  text-align: center;
+}
+
+.error {
+  color: #ff6b6b;
+  margin: 10px 0;
+}
+
+h1 {
+  margin-bottom: 20px;
+  color: #fff;
+}
+.app-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: Arial, sans-serif;
+  color: #fff;
+  background: #111;
+  height: 100vh;
+  justify-content: center;
+}
+
+.video-container {
+  position: relative;
+  display: inline-block;
+}
+
+.video-feed {
+  width: 1280px;
+  height: 720px;
+  border-radius: 8px;
+  background: black;
+}
+
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.center-frame {
+  position: absolute;
+  border: 2px solid rgba(0, 255, 0, 0.8);
+  width: 200px;
+  height: 200px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+  border-radius: 4px;
+}
+
+.controls {
+  margin-top: 16px;
+}
+
+button {
+  background: limegreen;
+  border: none;
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.status {
+  margin-top: 10px;
+}

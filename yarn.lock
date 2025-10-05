@@ -323,6 +323,16 @@
   resolved "https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.0-beta.39.tgz"
   integrity sha512-GkTtNCV8ObWbq3LrJStPBv9jkRPct8WlwotVjx3aU0RwfH3LyheixWK9Zhaj22C4EQj/TJxYyetoX+uOn/MWKw==
 
+"@techstark/opencv-js@^4.11.0-release.1":
+  version "4.11.0-release.1"
+  resolved "https://registry.npmjs.org/@techstark/opencv-js/-/opencv-js-4.11.0-release.1.tgz"
+  integrity sha512-d5h8cMiSbbnme5+I1ta4++EJ3mkca1zkVNh0A4+5ASJYOmO5OhVPRX3oPnNzs9I3KyGVX7QeFU8gVoI7I0w8RQ==
+
+"@tensorflow-models/coco-ssd@^2.2.3":
+  version "2.2.3"
+  resolved "https://registry.npmjs.org/@tensorflow-models/coco-ssd/-/coco-ssd-2.2.3.tgz"
+  integrity sha512-iCLGktG/XhHbP6h2FWxqCKMp/Px0lCp6MZU1fjNhjDHeaWEC9G7S7cZrnPXsfH+NewCM53YShlrHnknxU3SQig==
+
 "@tensorflow-models/handpose@^0.1.0":
   version "0.1.0"
   resolved "https://registry.npmjs.org/@tensorflow-models/handpose/-/handpose-0.1.0.tgz"

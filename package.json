@@ -13,6 +13,8 @@
     "@mediapipe/camera_utils": "^0.3.1675466862",
     "@mediapipe/hands": "^0.4.1675469240",
     "@mediapipe/tasks-vision": "0.10.18",
+    "@techstark/opencv-js": "^4.11.0-release.1",
+    "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow-models/handpose": "^0.1.0",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-backend-webgl": "^4.22.0",
