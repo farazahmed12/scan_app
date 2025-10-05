@@ -2,83 +2,48 @@ import * as handpose from "@tensorflow-models/handpose";
 import * as tf from "@tensorflow/tfjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-const calculateHandSize = (hand) => {
-  const bb = hand.boundingBox;
-  const handHeight = bb.bottomRight[1] - bb.topLeft[1];
-  const handWidth = bb.bottomRight[0] - bb.topLeft[0];
-  return Math.max(handHeight, handWidth);
+import fingerFrameImage from "./fingerFrame.png";
+
+const calculateFingerSize = (fingerTip, wrist) => {
+  const distance = Math.sqrt(
+    Math.pow(fingerTip[0] - wrist[0], 2) + Math.pow(fingerTip[1] - wrist[1], 2)
+  );
+  return distance;
 };
 
-const checkDistance = (handSize, canvasHeight, history) => {
-  const relativeSize = handSize / canvasHeight;
-  const newHistory = [...history.slice(-4), relativeSize];
-  const avgSize = newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
 
-  const TOO_FAR_THRESHOLD = 0.75;    // Increase if "TOO FAR" triggers too easily
-  const TOO_CLOSE_THRESHOLD = 1.1;  // Decrease if "TOO CLOSE" triggers too easily
+const checkFingerDistance = (fingerSize, canvasHeight, history) => {
+  const relativeSize = fingerSize / canvasHeight;
+  const newHistory = [...history.slice(-4), relativeSize];
+  const avgSize =
+    newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
+
+  const TOO_FAR_THRESHOLD = 0.15;
+  const TOO_CLOSE_THRESHOLD = 0.35;
 
   if (avgSize < TOO_FAR_THRESHOLD) return "TOO FAR";
   if (avgSize > TOO_CLOSE_THRESHOLD) return "TOO CLOSE";
   return "PERFECT";
 };
 
-const drawNails = (ctx, landmarks) => {
-  const fingertips = [4, 8, 12, 16, 20];
-  const fingerNames = ["Thumb", "Index", "Middle", "Ring", "Pinky"];
-
-  fingertips.forEach((tip, index) => {
-    const [x, y] = landmarks[tip];
-    ctx.strokeStyle = "#00ff00";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    // ctx.arc(x, y, 15, 0, 2 * Math.PI);
-    // ctx.stroke();
-    // ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
-    ctx.fill();
-    ctx.fillStyle = "#00ff00";
-    ctx.font = "bold 16px Arial";
-    ctx.fillText(fingerNames[index], x - 25, y - 25);
-  });
+const isPointInFrame = (point, frame) => {
+  return (
+    point[0] >= frame.x &&
+    point[0] <= frame.x + frame.width &&
+    point[1] >= frame.y &&
+    point[1] <= frame.y + frame.height
+  );
 };
 
-const detectFingers = (landmarks) => {
-  const FINGER_LANDMARKS = [
-    [4, 3, 2],
-    [8, 6, 5],
-    [12, 10, 9],
-    [16, 14, 13],
-    [20, 18, 17],
-  ];
+const detectIndexFinger = (landmarks) => {
+  const indexTip = landmarks[8];
+  const indexMid = landmarks[6];
+  const indexBase = landmarks[5];
 
-  const detectedFingers = [];
+  const isTipAboveMiddle = indexTip[1] < indexMid[1];
+  const isMiddleAboveBase = indexMid[1] < indexBase[1];
 
-  FINGER_LANDMARKS.forEach(([tipIndex, middleIndex, baseIndex], fingerId) => {
-    const tip = landmarks[tipIndex];
-    const middle = landmarks[middleIndex];
-    const base = landmarks[baseIndex];
-    const wrist = landmarks[0];
-
-    let isExtended = false;
-
-    if (fingerId === 0) {
-      isExtended = tip[0] < middle[0];
-    } else {
-      const isTipAboveMiddle = tip[1] < middle[1];
-      const isMiddleAboveBase = middle[1] < base[1];
-      isExtended = isTipAboveMiddle && isMiddleAboveBase;
-    }
-
-    const wristToTip = Math.sqrt(
-      Math.pow(tip[0] - wrist[0], 2) + Math.pow(tip[1] - wrist[1], 2)
-    );
-    const isVisible = wristToTip > 80;
-
-    if (isExtended && isVisible) {
-      detectedFingers.push(fingerId);
-    }
-  });
-
-  return detectedFingers;
+  return isTipAboveMiddle && isMiddleAboveBase;
 };
 
 export default function NailKYCCamera() {
@@ -87,8 +52,9 @@ export default function NailKYCCamera() {
   const capturedCanvasRef = useRef(null);
   const detectionLoopRef = useRef(null);
   const streamRef = useRef(null);
-  const retryCountRef = useRef(0);
   const isDetectionActiveRef = useRef(false);
+  const coinFrameRef = useRef(null);
+  const fingerFrameImageRef = useRef(null);
 
   const [model, setModel] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -97,30 +63,37 @@ export default function NailKYCCamera() {
   const [capturedImage, setCapturedImage] = useState(null);
   const [isFlashOn, setIsFlashOn] = useState(false);
   const [dValue, setDValue] = useState(0);
-  const [detectedFingerCount, setDetectedFingerCount] = useState(0);
+  const [fingerInFrame, setFingerInFrame] = useState(false);
+  const [coinDetected, setCoinDetected] = useState(false);
   const [sizeHistory, setSizeHistory] = useState([]);
   const [error, setError] = useState(null);
+  const [fingerFrame, setFingerFrame] = useState({
+    x: 0,
+    y: 0,
+    width: 352, // Updated to match image dimensions
+    height: 222,
+  });
+  const [coinFrame, setCoinFrame] = useState({
+    x: 0,
+    y: 0,
+    width: 120,
+    height: 120,
+  });
+  const [isFingerFrameLoaded, setIsFingerFrameLoaded] = useState(false);
 
-  // Send message to React Native
   const sendToNative = useCallback((type, data = {}) => {
     if (window.ReactNativeWebView) {
-      window.ReactNativeWebView.postMessage(
-        JSON.stringify({ type, ...data })
-      );
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type, ...data }));
     }
   }, []);
 
-
-
   const turnOnFlash = async () => {
-    if (isFlashOn) return; // Already on
+    if (isFlashOn) return;
 
-    // Check if running in React Native WebView
     if (window.ReactNativeWebView && window.toggleNativeTorch) {
       window.toggleNativeTorch();
       setIsFlashOn(true);
     } else {
-      // Fallback to browser API
       try {
         const stream = videoRef.current?.srcObject;
         if (!stream) return;
@@ -140,80 +113,236 @@ export default function NailKYCCamera() {
     }
   };
 
-  // Setup camera with retry logic
-  const setupCamera = useCallback(async (retryCount = 0) => {
-    try {
-      setLoadingProgress(20);
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { exact: "environment" },
-          // facingMode:'user',
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 30 },
-        },
-      });
+  const setupCamera = useCallback(
+    async (retryCount = 0) => {
+      try {
+        setLoadingProgress(20);
 
-      streamRef.current = stream;
-      setLoadingProgress(40);
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        
-        await new Promise((resolve, reject) => {
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current.play()
-              .then(resolve)
-              .catch(reject);
-          };
-          
-          setTimeout(() => reject(new Error("Video load timeout")), 10000);
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            // facingMode: { exact: "environment" },
+            facingMode: "user",
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30, max: 30 },
+          },
         });
 
-        setLoadingProgress(60);
-        sendToNative("CAMERA_READY");
-        retryCountRef.current = 0;
-      }
-    } catch (err) {
-      console.error("Camera setup error:", err);
-      
-      if (retryCount < 3) {
-        setTimeout(() => setupCamera(retryCount + 1), 2000);
-      } else {
-        setError("Camera access failed. Please check permissions.");
-        sendToNative("CAMERA_ERROR", { error: err.message });
-      }
-    }
-  }, [sendToNative]);
+        streamRef.current = stream;
+        setLoadingProgress(40);
 
-  // Load TensorFlow model
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+
+          await new Promise((resolve, reject) => {
+            videoRef.current.onloadedmetadata = () => {
+              videoRef.current.play().then(resolve).catch(reject);
+            };
+            setTimeout(() => reject(new Error("Video load timeout")), 10000);
+          });
+
+          setLoadingProgress(60);
+          sendToNative("CAMERA_READY");
+        }
+      } catch (err) {
+        console.error("Camera setup error:", err);
+
+        if (retryCount < 3) {
+          setTimeout(() => setupCamera(retryCount + 1), 2000);
+        } else {
+          setError("Camera access failed. Please check permissions.");
+          sendToNative("CAMERA_ERROR", { error: err.message });
+        }
+      }
+    },
+    [sendToNative]
+  );
+
   const loadModel = useCallback(async () => {
     try {
       setLoadingProgress(70);
       await tf.ready();
       await tf.setBackend("webgl");
-      
+
       setLoadingProgress(85);
       const handposeModel = await handpose.load();
-      
+
       setModel(handposeModel);
       setLoadingProgress(100);
       setIsLoading(false);
       sendToNative("MODEL_LOADED");
-      
-      // Turn on flash after model loads
-      turnOnFlash()
+
+      turnOnFlash();
     } catch (err) {
       console.error("Model loading error:", err);
       setError("AI model failed to load. Please restart.");
       sendToNative("MODEL_ERROR", { error: err.message });
     }
-  }, [sendToNative, turnOnFlash]);
+  }, [sendToNative]);
 
-  // Hand detection loop with performance optimization
+  // Preload finger frame image
+  useEffect(() => {
+    const img = new Image();
+    img.src = fingerFrameImage;
+    img.onload = () => {
+      fingerFrameImageRef.current = img;
+      setIsFingerFrameLoaded(true);
+    };
+    img.onerror = () => {
+      console.error("Failed to load finger frame image");
+    };
+  }, []);
+
+  // Update frame positions when canvas size changes
+  useEffect(() => {
+    const updateFrames = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      // Frame dimensions - using actual image dimensions
+      const fingerFrameWidth = 352;
+      const fingerFrameHeight = 222;
+      const coinFrameSize = 120;
+      const gap = 30; // Gap between frames
+
+      // Calculate total width of both frames + gap
+      const totalWidth = fingerFrameWidth + gap + coinFrameSize;
+
+      // Center both frames horizontally
+      const startX = (canvas.width - totalWidth) / 2;
+
+      // Center vertically
+      const centerY = canvas.height / 2;
+
+      // Finger frame on the left
+      setFingerFrame({
+        x: startX,
+        y: centerY - fingerFrameHeight / 2,
+        width: fingerFrameWidth,
+        height: fingerFrameHeight,
+      });
+
+      // Coin frame on the right
+      setCoinFrame({
+        x: startX + fingerFrameWidth + gap,
+        y: centerY - coinFrameSize / 2,
+        width: coinFrameSize,
+        height: coinFrameSize,
+      });
+    };
+
+    updateFrames();
+  }, []);
+
+  const detectCoinInFrame = (ctx, frame) => {
+    try {
+      // Get image data from the coin frame region
+      const imageData = ctx.getImageData(
+        frame.x,
+        frame.y,
+        frame.width,
+        frame.height
+      );
+      const data = imageData.data;
+
+      let coinColorPixels = 0;
+      let edgePixels = 0;
+      let brightPixels = 0;
+      const totalPixels = frame.width * frame.height;
+
+      // Analyze pixels for coin characteristics
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // Calculate brightness
+        const brightness = (r + g + b) / 3;
+
+        // Detect metallic/reflective colors with stricter thresholds
+        const isGoldenish =
+          r > 180 && g > 140 && g < 200 && b < 120 && brightness > 150;
+        const isSilverish =
+          r > 180 &&
+          g > 180 &&
+          b > 180 &&
+          Math.abs(r - g) < 30 &&
+          Math.abs(g - b) < 30;
+        const isCoppery = r > 180 && g > 100 && g < 160 && b < 100;
+
+        if (isGoldenish || isSilverish || isCoppery) {
+          coinColorPixels++;
+        }
+
+        // Count bright/reflective pixels
+        if (brightness > 180) {
+          brightPixels++;
+        }
+      }
+
+      // Edge detection - coins have circular edges
+      for (let y = 1; y < frame.height - 1; y++) {
+        for (let x = 1; x < frame.width - 1; x++) {
+          const idx = (y * frame.width + x) * 4;
+
+          const centerBrightness =
+            (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+
+          // Check neighbors
+          const topIdx = ((y - 1) * frame.width + x) * 4;
+          const bottomIdx = ((y + 1) * frame.width + x) * 4;
+          const leftIdx = (y * frame.width + (x - 1)) * 4;
+          const rightIdx = (y * frame.width + (x + 1)) * 4;
+
+          const topBrightness =
+            (data[topIdx] + data[topIdx + 1] + data[topIdx + 2]) / 3;
+          const bottomBrightness =
+            (data[bottomIdx] + data[bottomIdx + 1] + data[bottomIdx + 2]) / 3;
+          const leftBrightness =
+            (data[leftIdx] + data[leftIdx + 1] + data[leftIdx + 2]) / 3;
+          const rightBrightness =
+            (data[rightIdx] + data[rightIdx + 1] + data[rightIdx + 2]) / 3;
+
+          const edgeStrength =
+            Math.abs(centerBrightness - topBrightness) +
+            Math.abs(centerBrightness - bottomBrightness) +
+            Math.abs(centerBrightness - leftBrightness) +
+            Math.abs(centerBrightness - rightBrightness);
+
+          if (edgeStrength > 100) {
+            edgePixels++;
+          }
+        }
+      }
+
+      const coinRatio = coinColorPixels / totalPixels;
+      const brightRatio = brightPixels / totalPixels;
+      const edgeRatio = edgePixels / totalPixels;
+
+      // Coin must meet multiple criteria:
+      // 1. Sufficient metallic color pixels (at least 15%)
+      // 2. Sufficient bright/reflective pixels (at least 20%)
+      // 3. Visible edges indicating a circular object (at least 5%)
+      const hasCoinColors = coinRatio > 0.15;
+      const hasBrightness = brightRatio > 0.2;
+      const hasEdges = edgeRatio > 0.05;
+
+      // All three conditions must be met
+      return hasCoinColors && hasBrightness && hasEdges;
+    } catch (err) {
+      console.error("Coin detection error:", err);
+      return false;
+    }
+  };
+
   const detectHand = useCallback(async () => {
-    if (!model || !videoRef.current || !isDetectionActiveRef.current || capturedImage) {
+    if (
+      !model ||
+      !videoRef.current ||
+      !isDetectionActiveRef.current ||
+      capturedImage ||
+      !isFingerFrameLoaded
+    ) {
       return;
     }
 
@@ -230,65 +359,172 @@ export default function NailKYCCamera() {
       if (canvas.width !== videoRef.current.videoWidth) {
         canvas.width = videoRef.current.videoWidth;
         canvas.height = videoRef.current.videoHeight;
+
+        // Update frames with new canvas size
+        const fingerFrameWidth = 352;
+        const fingerFrameHeight = 222;
+        const coinFrameSize = 120;
+        const gap = 30;
+
+        const totalWidth = fingerFrameWidth + gap + coinFrameSize;
+        const startX = (canvas.width - totalWidth) / 2;
+        const centerY = canvas.height / 2;
+
+        setFingerFrame({
+          x: startX,
+          y: centerY - fingerFrameHeight / 2,
+          width: fingerFrameWidth,
+          height: fingerFrameHeight,
+        });
+
+        setCoinFrame({
+          x: startX + fingerFrameWidth + gap,
+          y: centerY - coinFrameSize / 2,
+          width: coinFrameSize,
+          height: coinFrameSize,
+        });
       }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      // Draw finger frame image instead of rectangle
+      if (fingerFrameImageRef.current) {
+        ctx.drawImage(
+          fingerFrameImageRef.current,
+          fingerFrame.x,
+          fingerFrame.y,
+          fingerFrame.width,
+          fingerFrame.height
+        );
+      }
+
+      // Draw green boundary around finger frame
+      ctx.strokeStyle = fingerInFrame ? "#10b981" : "rgba(16, 185, 129, 0.5)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(
+        fingerFrame.x,
+        fingerFrame.y,
+        fingerFrame.width,
+        fingerFrame.height
+      );
+
+      // Draw coin frame (top-right)
+      ctx.strokeStyle = coinDetected ? "#10b981" : "rgba(255, 255, 255, 0.5)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(
+        coinFrame.x,
+        coinFrame.y,
+        coinFrame.width,
+        coinFrame.height
+      );
+      ctx.fillStyle = coinDetected
+        ? "rgba(16, 185, 129, 0.2)"
+        : "rgba(255, 255, 255, 0.1)";
+      ctx.fillRect(coinFrame.x, coinFrame.y, coinFrame.width, coinFrame.height);
+
+      // Add labels
+      ctx.fillStyle = "white";
+      ctx.font = "bold 16px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        "Place Coin Here",
+        coinFrame.x + coinFrame.width / 2,
+        coinFrame.y - 10
+      );
+
+      // Detect coin in frame
+      const coinPresent = detectCoinInFrame(ctx, coinFrame);
+      setCoinDetected(coinPresent);
+
+      let fingerValid = false;
+      let distanceOk = false;
+
       if (predictions.length > 0) {
         const hand = predictions[0];
 
-        if (hand.handInViewConfidence < 0.75) {
-          setDistanceStatus("");
-          setDetectedFingerCount(0);
-          setSizeHistory([]);
-          detectionLoopRef.current = setTimeout(detectHand, 200);
-          return;
-        }
+        if (hand.handInViewConfidence > 0.75) {
+          const landmarks = hand.landmarks;
+          const isIndexExtended = detectIndexFinger(landmarks);
 
-        const landmarks = hand.landmarks;
-        const handSize = calculateHandSize(hand);
-        const detectedFingers = detectFingers(landmarks);
-        
-        setDetectedFingerCount(detectedFingers.length);
+          if (isIndexExtended) {
+            const indexTip = landmarks[8];
+            const wrist = landmarks[0];
 
-        if (detectedFingers.length === 5) {
-          const distance = checkDistance(handSize, canvas.height, sizeHistory);
-          setDistanceStatus(distance);
-          setSizeHistory(prev => [...prev.slice(-4), handSize / canvas.height]);
-          setDValue(handSize / canvas.height);
-          
-          drawNails(ctx, landmarks);
-          
-          sendToNative("HAND_DETECTED", {
-            fingerCount: 5,
-            distance: distance,
-            canCapture: distance === "PERFECT"
-          });
+            // Check if finger tip is inside the frame
+            const inFrame = isPointInFrame(indexTip, fingerFrame);
+            setFingerInFrame(inFrame);
+            fingerValid = inFrame;
+
+            if (inFrame) {
+              const fingerSize = calculateFingerSize(indexTip, wrist);
+              const distance = checkFingerDistance(
+                fingerSize,
+                canvas.height,
+                sizeHistory
+              );
+              setDistanceStatus(distance);
+              setSizeHistory((prev) => [
+                ...prev.slice(-4),
+                fingerSize / canvas.height,
+              ]);
+              setDValue(fingerSize / canvas.height);
+              distanceOk = distance === "PERFECT";
+
+              // Draw finger tip
+              ctx.beginPath();
+              ctx.arc(indexTip[0], indexTip[1], 15, 0, 2 * Math.PI);
+              ctx.fillStyle = distance === "PERFECT" ? "#10b981" : "#f59e0b";
+              ctx.fill();
+              ctx.strokeStyle = "white";
+              ctx.lineWidth = 3;
+              ctx.stroke();
+            } else {
+              setDistanceStatus("FINGER NOT IN FRAME");
+            }
+          } else {
+            setFingerInFrame(false);
+            setDistanceStatus("SHOW INDEX FINGER");
+          }
         } else {
-          setDistanceStatus("SHOW ALL FINGERS");
-          sendToNative("HAND_DETECTED", {
-            fingerCount: detectedFingers.length,
-            distance: "INCOMPLETE",
-            canCapture: false
-          });
+          setFingerInFrame(false);
+          setDistanceStatus("");
         }
       } else {
+        setFingerInFrame(false);
         setDistanceStatus("");
-        setDetectedFingerCount(0);
         setSizeHistory([]);
       }
+
+      const canCapture = fingerValid && distanceOk && coinPresent;
+
+      sendToNative("DETECTION_STATUS", {
+        fingerInFrame: fingerValid,
+        coinDetected: coinPresent,
+        distanceStatus: distanceStatus,
+        canCapture: canCapture,
+      });
     } catch (err) {
       console.error("Detection error:", err);
     }
 
     detectionLoopRef.current = setTimeout(detectHand, 150);
-  }, [model, capturedImage, sizeHistory, sendToNative]);
+  }, [
+    model,
+    capturedImage,
+    sizeHistory,
+    fingerFrame,
+    coinFrame,
+    fingerInFrame,
+    coinDetected,
+    distanceStatus,
+    sendToNative,
+    isFingerFrameLoaded,
+  ]);
 
-  // Capture image
   const handleCapture = useCallback(() => {
-    if (distanceStatus !== "PERFECT") {
-      sendToNative("CAPTURE_FAILED", { 
-        reason: "Distance not perfect" 
+    if (!fingerInFrame || !coinDetected || distanceStatus !== "PERFECT") {
+      sendToNative("CAPTURE_FAILED", {
+        reason: `Requirements not met - Finger in frame: ${fingerInFrame}, Coin detected: ${coinDetected}, Distance: ${distanceStatus}`,
       });
       return;
     }
@@ -308,48 +544,43 @@ export default function NailKYCCamera() {
 
       setCapturedImage(imageData);
       isDetectionActiveRef.current = false;
-      
-      // Turn off flash after capture
 
       sendToNative("IMAGE_CAPTURED", {
         imageData: imageData,
         dimensions: {
           width: capturedCanvas.width,
-          height: capturedCanvas.height
-        }
+          height: capturedCanvas.height,
+        },
       });
     } catch (err) {
       console.error("Capture error:", err);
       sendToNative("CAPTURE_ERROR", { error: err.message });
     }
-  }, [distanceStatus, sendToNative, ]);
+  }, [fingerInFrame, coinDetected, distanceStatus, sendToNative]);
 
-  // Reset and recapture
   const resetCapture = useCallback(async () => {
     setCapturedImage(null);
     setDistanceStatus("");
     setDValue(0);
-    setDetectedFingerCount(0);
+    setFingerInFrame(false);
+    setCoinDetected(false);
     setSizeHistory([]);
     setError(null);
-    
+
     await setupCamera();
     isDetectionActiveRef.current = true;
 
-    turnOnFlash()
+    turnOnFlash();
     sendToNative("RESET_CAPTURE");
   }, [setupCamera, sendToNative]);
 
-  // Listen to messages from React Native
   useEffect(() => {
     const handleMessage = (event) => {
       try {
-        const data = typeof event.data === 'string' 
-          ? JSON.parse(event.data) 
-          : event.data;
+        const data =
+          typeof event.data === "string" ? JSON.parse(event.data) : event.data;
 
         switch (data.type) {
-        
           case "TRIGGER_CAPTURE":
             handleCapture();
             break;
@@ -380,7 +611,6 @@ export default function NailKYCCamera() {
     };
   }, [handleCapture, resetCapture]);
 
-  // Initialize camera and model
   useEffect(() => {
     setupCamera();
     loadModel();
@@ -390,14 +620,13 @@ export default function NailKYCCamera() {
         clearTimeout(detectionLoopRef.current);
       }
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);
 
-  // Start detection when model is ready
   useEffect(() => {
-    if (model && !isLoading && !capturedImage) {
+    if (model && !isLoading && !capturedImage && isFingerFrameLoaded) {
       isDetectionActiveRef.current = true;
       detectHand();
     }
@@ -408,10 +637,8 @@ export default function NailKYCCamera() {
         clearTimeout(detectionLoopRef.current);
       }
     };
-  }, [model, isLoading, capturedImage, detectHand]);
+  }, [model, isLoading, capturedImage, detectHand, isFingerFrameLoaded]);
 
-
-  // Error state
   if (error) {
     return (
       <div style={styles.container}>
@@ -426,7 +653,6 @@ export default function NailKYCCamera() {
     );
   }
 
-  // Captured image view
   if (capturedImage) {
     return (
       <div style={styles.container}>
@@ -442,7 +668,8 @@ export default function NailKYCCamera() {
     );
   }
 
-  const isReadyToCapture = distanceStatus === "PERFECT" && detectedFingerCount === 5;
+  const isReadyToCapture =
+    fingerInFrame && coinDetected && distanceStatus === "PERFECT";
 
   return (
     <div style={styles.container}>
@@ -455,17 +682,17 @@ export default function NailKYCCamera() {
           <div style={styles.loaderContainer}>
             <div style={styles.loader}></div>
             <div style={styles.progressBar}>
-              <div 
-                style={{
-                  ...styles.progressFill,
-                  width: `${loadingProgress}%`
-                }}
+              <div
+                style={{ ...styles.progressFill, width: `${loadingProgress}%` }}
               />
             </div>
           </div>
           <p style={styles.loadingText}>
-            {loadingProgress < 60 ? "Initializing Camera..." : 
-             loadingProgress < 100 ? "Loading AI Model..." : "Ready!"}
+            {loadingProgress < 60
+              ? "Initializing Camera..."
+              : loadingProgress < 100
+              ? "Loading AI Model..."
+              : "Ready!"}
           </p>
         </div>
       )}
@@ -473,58 +700,58 @@ export default function NailKYCCamera() {
       {!isLoading && (
         <>
           <div style={styles.statusBar}>
-            <div style={styles.leftPanel}>
-              <div style={styles.fingerCounter}>
-                <span style={styles.fingerIcon}>🖐️</span>
-                <span style={styles.counterText}>
-                  {detectedFingerCount}/5 Fingers
+            <div style={styles.statusGrid}>
+              <div
+                style={{
+                  ...styles.statusItem,
+                  ...(fingerInFrame && styles.statusActive),
+                }}
+              >
+                <span style={styles.statusIcon}>
+                  {fingerInFrame ? "✓" : "○"}
                 </span>
+                <span style={styles.statusText}>Finger in Frame</span>
               </div>
-              <div style={styles.distanceValue}>
-                <span style={styles.distanceLabel}>Distance:</span>
-                <span style={styles.distanceNumber}>
-                  {dValue.toFixed(3)}
+              <div
+                style={{
+                  ...styles.statusItem,
+                  ...(coinDetected && styles.statusActive),
+                }}
+              >
+                <span style={styles.statusIcon}>
+                  {coinDetected ? "✓" : "○"}
                 </span>
+                <span style={styles.statusText}>Coin Detected</span>
+              </div>
+              <div
+                style={{
+                  ...styles.statusItem,
+                  ...(distanceStatus === "PERFECT" && styles.statusActive),
+                }}
+              >
+                <span style={styles.statusIcon}>
+                  {distanceStatus === "PERFECT" ? "✓" : "○"}
+                </span>
+                <span style={styles.statusText}>Distance OK</span>
               </div>
             </div>
-            
-           
+            <div style={styles.distanceValue}>
+              <span style={styles.distanceLabel}>D:</span>
+              <span style={styles.distanceNumber}>{dValue.toFixed(3)}</span>
+            </div>
           </div>
 
-          {distanceStatus && (
+          {distanceStatus && distanceStatus !== "PERFECT" && (
             <div
               style={{
                 ...styles.distanceIndicator,
                 ...(distanceStatus === "TOO FAR" && styles.tooFar),
                 ...(distanceStatus === "TOO CLOSE" && styles.tooClose),
-                ...(distanceStatus === "PERFECT" && styles.perfect),
-                ...(distanceStatus === "SHOW ALL FINGERS" && styles.showFingers),
+                ...(distanceStatus.includes("FINGER") && styles.showFingers),
+                ...(distanceStatus.includes("INDEX") && styles.showFingers),
               }}
             >
-              {distanceStatus === "TOO FAR" && (
-                <>
-                  <span style={styles.distanceIcon}>👋</span>
-                  <span style={styles.distanceText}>Move Closer</span>
-                </>
-              )}
-              {distanceStatus === "TOO CLOSE" && (
-                <>
-                  <span style={styles.distanceIcon}>✋</span>
-                  <span style={styles.distanceText}>Move Back</span>
-                </>
-              )}
-              {distanceStatus === "PERFECT" && (
-                <>
-                  <span style={styles.distanceIcon}>✓</span>
-                  <span style={styles.distanceText}>Perfect!</span>
-                </>
-              )}
-              {distanceStatus === "SHOW ALL FINGERS" && (
-                <>
-                  <span style={styles.distanceIcon}>🖐️</span>
-                  <span style={styles.distanceText}>Show All 5 Fingers</span>
-                </>
-              )}
+              <span style={styles.distanceText}>{distanceStatus}</span>
             </div>
           )}
 
@@ -538,7 +765,7 @@ export default function NailKYCCamera() {
                 : styles.captureBtnDisabled),
             }}
           >
-            {isReadyToCapture ? "📸 Capture" : "Position Your Hand"}
+            {isReadyToCapture ? "📸 Capture Now" : "Align Finger & Coin"}
           </button>
         </>
       )}
@@ -625,37 +852,46 @@ const styles = {
     justifyContent: "space-between",
     alignItems: "flex-start",
     zIndex: 10,
+    gap: "10px",
   },
-  leftPanel: {
+  statusGrid: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "8px",
+    flex: 1,
   },
-  fingerCounter: {
+  statusItem: {
     background: "rgba(0, 0, 0, 0.7)",
-    padding: "12px 20px",
-    borderRadius: "25px",
-    backdropFilter: "blur(10px)",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  fingerIcon: {
-    fontSize: "1.5rem",
-  },
-  counterText: {
-    color: "white",
-    fontSize: "1rem",
-    fontWeight: "600",
-  },
-  distanceValue: {
-    background: "rgba(0, 0, 0, 0.7)",
-    padding: "10px 18px",
+    padding: "8px 15px",
     borderRadius: "20px",
     backdropFilter: "blur(10px)",
     display: "flex",
     alignItems: "center",
     gap: "8px",
+    transition: "all 0.3s ease",
+  },
+  statusActive: {
+    background: "rgba(16, 185, 129, 0.8)",
+    boxShadow: "0 0 15px rgba(16, 185, 129, 0.5)",
+  },
+  statusIcon: {
+    fontSize: "1rem",
+    color: "white",
+    fontWeight: "bold",
+  },
+  statusText: {
+    color: "white",
+    fontSize: "0.85rem",
+    fontWeight: "600",
+  },
+  distanceValue: {
+    background: "rgba(0, 0, 0, 0.7)",
+    padding: "10px 15px",
+    borderRadius: "20px",
+    backdropFilter: "blur(10px)",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
   },
   distanceLabel: {
     color: "rgba(255, 255, 255, 0.7)",
@@ -664,35 +900,22 @@ const styles = {
   },
   distanceNumber: {
     color: "#10b981",
-    fontSize: "1rem",
+    fontSize: "0.95rem",
     fontWeight: "bold",
     fontFamily: "monospace",
   },
-  flashIndicator: {
-    background: "rgba(251, 191, 36, 0.9)",
-    padding: "10px",
-    borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "45px",
-    height: "45px",
-  },
-  flashIcon: {
-    fontSize: "1.3rem",
-  },
   distanceIndicator: {
     position: "absolute",
-    top: "50px",
-    right: "0%",
-    transform: "translateX(-50%)",
+    top: "45%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
     zIndex: 10,
-    padding: "10px",
+    padding: "15px 25px",
     borderRadius: "12px",
     display: "flex",
     alignItems: "center",
     gap: "10px",
-    fontSize: "1.2rem",
+    fontSize: "1.1rem",
     fontWeight: "bold",
     backdropFilter: "blur(10px)",
   },
@@ -706,21 +929,13 @@ const styles = {
     color: "white",
     boxShadow: "0 10px 30px rgba(251, 191, 36, 0.5)",
   },
-  perfect: {
-    background: "rgba(16, 185, 129, 0.9)",
-    color: "white",
-    boxShadow: "0 10px 30px rgba(16, 185, 129, 0.5)",
-  },
   showFingers: {
     background: "rgba(59, 130, 246, 0.9)",
     color: "white",
     boxShadow: "0 10px 30px rgba(59, 130, 246, 0.5)",
   },
-  distanceIcon: {
-    fontSize: "0.8rem",
-  },
   distanceText: {
-    fontSize: "0.8rem",
+    fontSize: "0.95rem",
   },
   captureBtn: {
     position: "absolute",
