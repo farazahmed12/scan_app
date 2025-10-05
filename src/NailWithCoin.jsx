@@ -132,9 +132,36 @@ export default function NailWithCoin() {
     height: 300,
   });
   const [isImagesLoaded, setIsImagesLoaded] = useState(false);
+  const [isFlashOn, setIsFlashOn] = useState(false);
 
   const HISTORY_LENGTH = 8;
   const STABILITY_THRESHOLD = 6;
+
+  const turnOnFlash = async () => {
+    if (isFlashOn) return;
+
+    if (window.ReactNativeWebView && window.toggleNativeTorch) {
+      window.toggleNativeTorch();
+      setIsFlashOn(true);
+    } else {
+      try {
+        const stream = videoRef.current?.srcObject;
+        if (!stream) return;
+
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities();
+
+        if (capabilities.torch) {
+          await track.applyConstraints({
+            advanced: [{ torch: true }],
+          });
+          setIsFlashOn(true);
+        }
+      } catch (err) {
+        console.error("Flash on error:", err);
+      }
+    }
+  };
 
   const setupCamera = useCallback(async (retryCount = 0) => {
     try {
@@ -210,6 +237,11 @@ export default function NailWithCoin() {
 
       setLoadingProgress(100);
       setIsLoading(false);
+      
+      // Turn on flash after models are loaded
+      setTimeout(() => {
+        turnOnFlash();
+      }, 500);
     } catch (err) {
       console.error("Model loading error:", err);
       setError("AI models failed to load. Please restart.");
@@ -396,6 +428,16 @@ export default function NailWithCoin() {
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      // Draw dark overlay over entire canvas
+      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Clear the finger frame area (make it transparent)
+      ctx.clearRect(fingerFrame.x, fingerFrame.y, fingerFrame.width, fingerFrame.height);
+      
+      // Clear the coin frame area (make it transparent)
+      ctx.clearRect(coinFrame.x, coinFrame.y, coinFrame.width, coinFrame.height);
+
       // Detect coin BEFORE drawing any overlays
       const coinPresent = detectCoin(videoRef.current, coinFrame);
       setCoinDetected(coinPresent);
@@ -574,6 +616,8 @@ export default function NailWithCoin() {
 
     await setupCamera();
     isDetectionActiveRef.current = true;
+    
+    turnOnFlash();
   }, [setupCamera]);
 
   useEffect(() => {
@@ -708,6 +752,8 @@ export default function NailWithCoin() {
             <div
               style={{
                 ...styles.distanceIndicator,
+                top: `${fingerFrame.y - 60}px`,
+                left: `${fingerFrame.x + fingerFrame.width / 2}px`,
                 ...(distanceStatus === "TOO FAR" && styles.tooFar),
                 ...(distanceStatus === "TOO CLOSE" && styles.tooClose),
                 ...(distanceStatus.includes("FINGER") && styles.showFingers),
@@ -968,20 +1014,20 @@ const styles = {
   },
   distanceIndicator: {
     position: "absolute",
-    top: "45%",
-    left: "50%",
-    transform: "translate(-50%, -50%)",
+    transform: "translate(-50%, 0)",
     zIndex: 10,
-    padding: "min(15px, 2.5vh) min(25px, 4vw)",
+    padding: "min(12px, 2vh) min(20px, 3.5vw)",
     borderRadius: "12px",
     display: "flex",
     alignItems: "center",
+    justifyContent: "center",
     gap: "min(10px, 2vw)",
-    fontSize: "clamp(1rem, 3.5vw, 1.1rem)",
+    fontSize: "clamp(0.9rem, 3vw, 1rem)",
     fontWeight: "bold",
     backdropFilter: "blur(10px)",
     maxWidth: "85vw",
     textAlign: "center",
+    whiteSpace: "nowrap",
   },
   tooFar: {
     background: "rgba(239, 68, 68, 0.9)",
