@@ -18,13 +18,23 @@ const checkFingerDistance = (fingerSize, canvasHeight, history) => {
   const avgSize =
     newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
 
-  const TOO_FAR_THRESHOLD = 0.15;
-  const TOO_CLOSE_THRESHOLD = 0.35;
-
-  if (avgSize < TOO_FAR_THRESHOLD) return "TOO FAR";
-  if (avgSize > TOO_CLOSE_THRESHOLD) return "TOO CLOSE";
-  return "PERFECT";
+ return avgSize
 };
+
+
+const checkDistance = (fingerSize, canvasHeight, history) => {
+    const relativeSize = fingerSize / canvasHeight;
+    const newHistory = [...history.slice(-4), relativeSize];
+    const avgSize =
+      newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
+  
+    const TOO_FAR_THRESHOLD = 0.15;
+    const TOO_CLOSE_THRESHOLD = 0.35;
+  
+    if (avgSize < TOO_FAR_THRESHOLD) return "TOO FAR";
+    if (avgSize > TOO_CLOSE_THRESHOLD) return "TOO CLOSE";
+    return "PERFECT";
+  };
 
 const isPointInFrame = (point, frame) => {
   return (
@@ -508,12 +518,18 @@ export default function NailWithCoin() {
                 canvas.height,
                 sizeHistory
               );
+              const newD = checkDistance(
+                fingerSize,
+                canvas.height,
+                sizeHistory
+              );
+              setDValue(newD)
               setDistanceStatus(distance);
               setSizeHistory((prev) => [
                 ...prev.slice(-4),
                 fingerSize / canvas.height,
               ]);
-              setDValue(fingerSize / canvas.height);
+            //   setDValue(fingerSize / canvas.height);
               distanceOk = distance === "PERFECT";
 
               ctx.beginPath();
