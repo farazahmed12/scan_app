@@ -105,15 +105,118 @@ export default function CircleDetect() {
   const [predictions, setPredictions] = useState([]);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [isOpenCVLoaded, setIsOpenCVLoaded] = useState(false);
+  const [isCircleStable, setIsCircleStable] = useState(false);
 
   // Using a ref for the animation loop ID
   const requestRef = useRef();
+  
+  // Refs for stabilization
+  const detectionHistoryRef = useRef([]);
+  const stableCircleRef = useRef(null);
+  const HISTORY_LENGTH = 8; // Number of frames to consider
+  const STABILITY_THRESHOLD = 6; // Minimum detections needed in history
 
   // Define the size of our detection zone
   const ZONE_SIZE = 200;
   // Canvas/video dimensions
   const CANVAS_WIDTH = 640;
   const CANVAS_HEIGHT = 480;
+
+  // Stabilization: Track detection history to avoid flickering
+  const updateDetectionHistory = (detectedCircles) => {
+    // Add current detection state to history
+    detectionHistoryRef.current.push(detectedCircles.length > 0);
+    
+    // Keep only recent history
+    if (detectionHistoryRef.current.length > HISTORY_LENGTH) {
+      detectionHistoryRef.current.shift();
+    }
+    
+    // Count positive detections in history
+    const positiveDetections = detectionHistoryRef.current.filter(d => d).length;
+    
+    // Update stable state only if threshold is met
+    const shouldBeStable = positiveDetections >= STABILITY_THRESHOLD;
+    
+    if (shouldBeStable !== isCircleStable) {
+      setIsCircleStable(shouldBeStable);
+      
+      // Store the stable circle for drawing
+      if (shouldBeStable && detectedCircles.length > 0) {
+        stableCircleRef.current = detectedCircles[0];
+      } else if (!shouldBeStable) {
+        stableCircleRef.current = null;
+      }
+    }
+  };
+
+  // Validate if detected circle is actually circular (not an irregular shape)
+  const validateCircle = (grayImg, cx, cy, radius, cv) => {
+    try {
+      // Check if circle center and area are within bounds
+      if (cx < radius || cy < radius || 
+          cx + radius >= grayImg.cols || cy + radius >= grayImg.rows) {
+        return false;
+      }
+
+      // Sample points around the circle perimeter
+      const numSamples = 12;
+      let validPoints = 0;
+      
+      for (let i = 0; i < numSamples; i++) {
+        const angle = (2 * Math.PI * i) / numSamples;
+        const x = Math.round(cx + radius * Math.cos(angle));
+        const y = Math.round(cy + radius * Math.sin(angle));
+        
+        // Check if point is within bounds
+        if (x >= 1 && x < grayImg.cols - 1 && y >= 1 && y < grayImg.rows - 1) {
+          // Calculate gradient magnitude at this point
+          const centerPixel = grayImg.ucharPtr(y, x)[0];
+          const innerPixel = grayImg.ucharPtr(
+            Math.round(cy + (radius - 5) * Math.cos(angle)),
+            Math.round(cx + (radius - 5) * Math.cos(angle))
+          )[0];
+          
+          // Check for edge (significant difference between inner and perimeter)
+          if (Math.abs(centerPixel - innerPixel) > 20) {
+            validPoints++;
+          }
+        }
+      }
+      
+      // At least 50% of sampled points should show edge characteristics
+      const circleScore = validPoints / numSamples;
+      return circleScore >= 0.5;
+    } catch (err) {
+      return true; // If validation fails, accept the circle
+    }
+  };
+
+  // Draw the detected circles on the overlay canvas
+  const drawPredictions = (objects) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    objects.forEach(circle => {
+      const { x, y, radius } = circle;
+
+      // Draw the circle outline
+      ctx.strokeStyle = "lime";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, 2 * Math.PI);
+      ctx.stroke();
+      
+      // Draw the center point
+      ctx.fillStyle = "red";
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.fill();
+    });
+  };
 
   // Load OpenCV from a CDN
   useEffect(() => {
@@ -228,21 +331,37 @@ export default function CircleDetect() {
 
       const gray = new cv.Mat();
       cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY);
-      cv.GaussianBlur(gray, gray, new cv.Size(9, 9), 1.5, 1.5);
-
+      
+      // Apply median blur to reduce noise while preserving edges
+      cv.medianBlur(gray, gray, 5);
+      
       const circles = new cv.Mat();
-      // Adjusted HoughCircles parameters for better detection
-      cv.HoughCircles(gray, circles, cv.HOUGH_GRADIENT, 1.5, 40, 75, 30, 10, 90);
+      // Balanced parameters for good circle detection
+      // dp=1.2: good balance between speed and accuracy
+      // minDist=40: circles should be reasonably separated
+      // param1=80: Canny edge threshold - medium sensitivity
+      // param2=35: accumulator threshold - balanced
+      // minRadius=15, maxRadius=85: good range for coins/bottle caps
+      cv.HoughCircles(gray, circles, cv.HOUGH_GRADIENT, 1.2, 40, 80, 35, 15, 85);
 
       const detectedCircles = [];
       if (circles.cols > 0) {
         for (let i = 0; i < circles.cols; ++i) {
-          const x = circles.data32F[i * 3] + zoneLeft;
-          const y = circles.data32F[i * 3 + 1] + zoneTop;
+          const cx = circles.data32F[i * 3];
+          const cy = circles.data32F[i * 3 + 1];
           const radius = circles.data32F[i * 3 + 2];
-          detectedCircles.push({ x, y, radius });
+          
+          // Validate circle quality
+          if (validateCircle(gray, cx, cy, radius, cv)) {
+            const x = cx + zoneLeft;
+            const y = cy + zoneTop;
+            detectedCircles.push({ x, y, radius });
+          }
         }
       }
+      
+      // Update detection history for stabilization
+      updateDetectionHistory(detectedCircles);
       
       setPredictions(detectedCircles);
       drawPredictions(detectedCircles);
@@ -260,32 +379,6 @@ export default function CircleDetect() {
     requestRef.current = requestAnimationFrame(processVideo);
   };
 
-  // Draw the detected circles on the overlay canvas
-  const drawPredictions = (objects) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    objects.forEach(circle => {
-      const { x, y, radius } = circle;
-
-      // Draw the circle outline
-      ctx.strokeStyle = "lime";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, 2 * Math.PI);
-      ctx.stroke();
-      
-      // Draw the center point
-      ctx.fillStyle = "red";
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, 2 * Math.PI);
-      ctx.fill();
-    });
-  };
-
   const startWebcam = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -293,6 +386,7 @@ export default function CircleDetect() {
           facingMode: 'user',
           width: { ideal: CANVAS_WIDTH },
           height: { ideal: CANVAS_HEIGHT },
+          frameRate: { ideal: 10, max: 20 }
         },
         audio: false,
       });
@@ -317,6 +411,9 @@ export default function CircleDetect() {
     }
     setIsWebcamStarted(false);
     setPredictions([]);
+    setIsCircleStable(false);
+    detectionHistoryRef.current = [];
+    stableCircleRef.current = null;
     // Clear canvas when stopping
     const canvas = canvasRef.current;
     if (canvas) {
@@ -391,13 +488,38 @@ export default function CircleDetect() {
           >
             {isWebcamStarted ? "Stop Detection" : "Start Detection"}
           </button>
+          
+          <button
+            onClick={() => alert('API would be called here!')}
+            disabled={!isCircleStable}
+            style={{
+              marginLeft: '10px',
+              backgroundColor: isCircleStable ? '#28a745' : '#555',
+              cursor: isCircleStable ? 'pointer' : 'not-allowed'
+            }}
+          >
+            {isCircleStable ? '✓ Circle Detected - Call API' : 'Waiting for Circle...'}
+          </button>
         </div>
 
         <div className="status">
           {!isWebcamStarted && isOpenCVLoaded && "Click 'Start Detection' to begin"}
-          {isWebcamStarted && (predictions.length > 0
-            ? `✓ Detected ${predictions.length} circle(s)`
-            : "No circles detected in the green frame")}
+          {isWebcamStarted && (
+            <>
+              <div>
+                Live Detection: {predictions.length > 0
+                  ? `${predictions.length} circle(s) in frame`
+                  : "No circles in frame"}
+              </div>
+              <div style={{ 
+                marginTop: '8px', 
+                color: isCircleStable ? '#00ff7f' : '#ff6b6b',
+                fontWeight: 'bold'
+              }}>
+                Status: {isCircleStable ? '✓ Stable - Ready!' : '⧗ Stabilizing...'}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </>
