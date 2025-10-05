@@ -18,7 +18,14 @@ const checkFingerDistance = (fingerSize, canvasHeight, history) => {
   const avgSize =
     newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
 
- return avgSize
+
+    const TOO_FAR_THRESHOLD = 0.15;
+    const TOO_CLOSE_THRESHOLD = 0.35;
+  
+    if (avgSize < TOO_FAR_THRESHOLD) return "TOO FAR";
+    if (avgSize > TOO_CLOSE_THRESHOLD) return "TOO CLOSE";
+    return "PERFECT";
+
 };
 
 
@@ -28,12 +35,7 @@ const checkDistance = (fingerSize, canvasHeight, history) => {
     const avgSize =
       newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
   
-    const TOO_FAR_THRESHOLD = 0.15;
-    const TOO_CLOSE_THRESHOLD = 0.35;
-  
-    if (avgSize < TOO_FAR_THRESHOLD) return "TOO FAR";
-    if (avgSize > TOO_CLOSE_THRESHOLD) return "TOO CLOSE";
-    return "PERFECT";
+      return avgSize
   };
 
 const isPointInFrame = (point, frame) => {
@@ -182,8 +184,8 @@ export default function NailWithCoin() {
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-        //   facingMode: "user",
-        facingMode: { exact: "environment" },
+          facingMode: "user",
+        // facingMode: { exact: "environment" },
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
           frameRate: { ideal: 30, max: 30 },
@@ -771,7 +773,7 @@ export default function NailWithCoin() {
             </div>
             <div style={styles.distanceValue}>
               <span style={styles.distanceLabel}>D:</span>
-              <span style={styles.distanceNumber}>{dValue.toFixed(3)}</span>
+              <span style={styles.distanceNumber}>{dValue?.toFixed(3)}</span>
             </div>
           </div>
 
