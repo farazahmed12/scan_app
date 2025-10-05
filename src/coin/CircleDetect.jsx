@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import coin from '../coin.png';
 
 // CSS is embedded here for a single-file component
 const styles = `
@@ -160,35 +161,54 @@ export default function CircleDetect() {
       }
 
       // Sample points around the circle perimeter
-      const numSamples = 12;
+      const numSamples = 16;
       let validPoints = 0;
+      let edgeStrengthSum = 0;
       
       for (let i = 0; i < numSamples; i++) {
         const angle = (2 * Math.PI * i) / numSamples;
-        const x = Math.round(cx + radius * Math.cos(angle));
-        const y = Math.round(cy + radius * Math.sin(angle));
+        const px = Math.round(cx + radius * Math.cos(angle));
+        const py = Math.round(cy + radius * Math.sin(angle));
         
-        // Check if point is within bounds
-        if (x >= 1 && x < grayImg.cols - 1 && y >= 1 && y < grayImg.rows - 1) {
-          // Calculate gradient magnitude at this point
-          const centerPixel = grayImg.ucharPtr(y, x)[0];
-          const innerPixel = grayImg.ucharPtr(
-            Math.round(cy + (radius - 5) * Math.cos(angle)),
-            Math.round(cx + (radius - 5) * Math.cos(angle))
-          )[0];
+        // Inner point (slightly inside the circle)
+        const ix = Math.round(cx + (radius - 8) * Math.cos(angle));
+        const iy = Math.round(cy + (radius - 8) * Math.sin(angle));
+        
+        // Outer point (slightly outside the circle)
+        const ox = Math.round(cx + (radius + 8) * Math.cos(angle));
+        const oy = Math.round(cy + (radius + 8) * Math.sin(angle));
+        
+        // Check if all points are within bounds
+        if (px >= 0 && px < grayImg.cols && py >= 0 && py < grayImg.rows &&
+            ix >= 0 && ix < grayImg.cols && iy >= 0 && iy < grayImg.rows &&
+            ox >= 0 && ox < grayImg.cols && oy >= 0 && oy < grayImg.rows) {
           
-          // Check for edge (significant difference between inner and perimeter)
-          if (Math.abs(centerPixel - innerPixel) > 20) {
+          const perimeterPixel = grayImg.ucharPtr(py, px)[0];
+          const innerPixel = grayImg.ucharPtr(iy, ix)[0];
+          const outerPixel = grayImg.ucharPtr(oy, ox)[0];
+          
+          // Calculate gradient across the circle boundary
+          const innerGradient = Math.abs(perimeterPixel - innerPixel);
+          const outerGradient = Math.abs(perimeterPixel - outerPixel);
+          const totalGradient = innerGradient + outerGradient;
+          
+          edgeStrengthSum += totalGradient;
+          
+          // Check for strong edge (significant difference on both sides)
+          if (totalGradient > 40) {
             validPoints++;
           }
         }
       }
       
-      // At least 50% of sampled points should show edge characteristics
+      // At least 65% of sampled points should show strong edge characteristics
       const circleScore = validPoints / numSamples;
-      return circleScore >= 0.5;
+      const avgEdgeStrength = edgeStrengthSum / numSamples;
+      
+      // Must pass both tests: good score AND strong average edge
+      return circleScore >= 0.65 && avgEdgeStrength >= 30;
     } catch (err) {
-      return true; // If validation fails, accept the circle
+      return false; // If validation fails, reject the circle
     }
   };
 
@@ -336,13 +356,13 @@ export default function CircleDetect() {
       cv.medianBlur(gray, gray, 5);
       
       const circles = new cv.Mat();
-      // Balanced parameters for good circle detection
-      // dp=1.2: good balance between speed and accuracy
-      // minDist=40: circles should be reasonably separated
-      // param1=80: Canny edge threshold - medium sensitivity
-      // param2=35: accumulator threshold - balanced
-      // minRadius=15, maxRadius=85: good range for coins/bottle caps
-      cv.HoughCircles(gray, circles, cv.HOUGH_GRADIENT, 1.2, 40, 80, 35, 15, 85);
+      // Balanced parameters - sweet spot between accuracy and detection
+      // dp=1.2: good balance
+      // minDist=45: moderate separation
+      // param1=90: medium-high Canny threshold
+      // param2=40: moderate accumulator - filters some but not too strict
+      // minRadius=18, maxRadius=80: good range for objects, excludes small features
+      cv.HoughCircles(gray, circles, cv.HOUGH_GRADIENT, 1.2, 45, 90, 40, 18, 80);
 
       const detectedCircles = [];
       if (circles.cols > 0) {
@@ -386,7 +406,6 @@ export default function CircleDetect() {
           facingMode: 'user',
           width: { ideal: CANVAS_WIDTH },
           height: { ideal: CANVAS_HEIGHT },
-          frameRate: { ideal: 10, max: 20 }
         },
         audio: false,
       });
@@ -521,6 +540,17 @@ export default function CircleDetect() {
             </>
           )}
         </div>
+
+        {/* coin */}
+        <img 
+        src={coin}
+        style={{
+          width: '200px',
+          height: '200px',
+          position: 'fixed',
+          bottom: '20px',
+        }}
+        />
       </div>
     </>
   );
