@@ -20,7 +20,7 @@ const checkFingerDistance = (fingerSize, canvasHeight, history) => {
 
 
     const TOO_FAR_THRESHOLD = 0.15;
-    const TOO_CLOSE_THRESHOLD = 0.35;
+    const TOO_CLOSE_THRESHOLD = 0.25;
   
     if (avgSize < TOO_FAR_THRESHOLD) return "TOO FAR";
     if (avgSize > TOO_CLOSE_THRESHOLD) return "TOO CLOSE";
