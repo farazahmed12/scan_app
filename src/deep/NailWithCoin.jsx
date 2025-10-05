@@ -694,6 +694,18 @@ export default function NailWithCoin() {
     );
   }
 
+  if (capturedImage) {
+    return (
+      <div style={styles.container}>
+        <img src={capturedImage} alt="Captured" style={styles.capturedImage} />
+      
+        <button onClick={resetCapture} style={styles.recaptureBtn}>
+          Capture Again
+        </button>
+      </div>
+    );
+  }
+
 
 
   const isReadyToCapture =
