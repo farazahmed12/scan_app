@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import coin from '../coin.png';
 
+import coinImageUrl from '../coin.png'; // Ensure you have a coin frame image in assets
 // CSS is embedded here for a single-file component
 const styles = `
   .app-root {
@@ -47,10 +47,13 @@ const styles = `
     width: 200px;
     height: 200px;
     transform: translate(-50%, -50%);
-    border: 3px dashed rgba(0, 255, 127, 0.7);
-    box-shadow: 0 0 15px rgba(0, 255, 127, 0.5);
     pointer-events: none;
-    border-radius: 8px;
+    opacity: 0.6;
+    background-image: url('${coinImageUrl}');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.5));
   }
   .controls {
     margin-top: 20px;
@@ -201,14 +204,14 @@ export default function CircleDetect() {
         }
       }
       
-      // At least 65% of sampled points should show strong edge characteristics
+      // Balanced thresholds: 55% valid points OR strong average edge
       const circleScore = validPoints / numSamples;
       const avgEdgeStrength = edgeStrengthSum / numSamples;
       
-      // Must pass both tests: good score AND strong average edge
-      return circleScore >= 0.65 && avgEdgeStrength >= 30;
+      // Pass if either condition is good
+      return (circleScore >= 0.55 && avgEdgeStrength >= 20) || avgEdgeStrength >= 35;
     } catch (err) {
-      return false; // If validation fails, reject the circle
+      return false;
     }
   };
 
@@ -406,6 +409,7 @@ export default function CircleDetect() {
           facingMode: 'user',
           width: { ideal: CANVAS_WIDTH },
           height: { ideal: CANVAS_HEIGHT },
+          frameRate: { ideal: 20, max: 30 }
         },
         audio: false,
       });
@@ -540,17 +544,6 @@ export default function CircleDetect() {
             </>
           )}
         </div>
-
-        {/* coin */}
-        <img 
-        src={coin}
-        style={{
-          width: '200px',
-          height: '200px',
-          position: 'fixed',
-          bottom: '20px',
-        }}
-        />
       </div>
     </>
   );
