@@ -131,19 +131,25 @@ export default function NailWithCoin() {
   const [sizeHistory, setSizeHistory] = useState([]);
   const [error, setError] = useState(null);
   const [dValue, setDValue] = useState(0);
+
+  const FINGER_FRAME_WIDTH  = 400
+  const FINGER_FRAME_HEIGHT = 500
+  const COIN_FRAME_HEIGHT = 150
+  const COIN_FRAME_WIDTH = 250
+
   
   // Larger finger frame, smaller coin frame
   const [fingerFrame, setFingerFrame] = useState({
     x: 0,
     y: 0,
-    width: 400,  // Increased from 300
-    height: 400, // Increased from 300
+    width: FINGER_FRAME_WIDTH,  
+    height: FINGER_FRAME_HEIGHT, 
   });
   const [coinFrame, setCoinFrame] = useState({
     x: 0,
     y: 0,
-    width: 200,  // Reduced from 300
-    height: 200, // Reduced from 300
+    width: COIN_FRAME_WIDTH,
+    height: COIN_FRAME_HEIGHT
   });
   
   const [isImagesLoaded, setIsImagesLoaded] = useState(false);
@@ -315,9 +321,9 @@ export default function NailWithCoin() {
       if (!canvas) return;
 
       // Updated sizes: larger finger frame, smaller coin frame
-      const fingerFrameWidth = 400;
-      const fingerFrameHeight = 400;
-      const coinFrameSize = 200;
+      const fingerFrameWidth = FINGER_FRAME_WIDTH;
+      const fingerFrameHeight = FINGER_FRAME_HEIGHT;
+      const coinFrameSize = COIN_FRAME_WIDTH;
       const gap = 40;
       
       const totalWidth = fingerFrameWidth + gap + coinFrameSize;
@@ -425,9 +431,9 @@ export default function NailWithCoin() {
         canvas.height = videoRef.current.videoHeight;
 
         // Updated sizes for responsive layout
-        const fingerFrameWidth = 400;
-        const fingerFrameHeight = 400;
-        const coinFrameSize = 200;
+        const fingerFrameWidth = FINGER_FRAME_WIDTH;
+        const fingerFrameHeight = FINGER_FRAME_HEIGHT;
+        const coinFrameSize = COIN_FRAME_WIDTH
         const gap = 40;
         
         const totalWidth = fingerFrameWidth + gap + coinFrameSize;
