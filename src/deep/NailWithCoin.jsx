@@ -20,7 +20,7 @@ const checkFingerDistance = (fingerSize, canvasHeight, history) => {
 
 
     const TOO_FAR_THRESHOLD = 0.15;
-    const TOO_CLOSE_THRESHOLD = 0.25;
+    const TOO_CLOSE_THRESHOLD = 0.4;
   
     if (avgSize < TOO_FAR_THRESHOLD) return "TOO FAR";
     if (avgSize > TOO_CLOSE_THRESHOLD) return "TOO CLOSE";
@@ -190,8 +190,8 @@ export default function NailWithCoin() {
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-        //   facingMode: "user",
-        facingMode: { exact: "environment" },
+          facingMode: "user",
+        // facingMode: { exact: "environment" },
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
           frameRate: { ideal: 30, max: 30 },
