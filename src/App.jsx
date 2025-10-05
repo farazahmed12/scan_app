@@ -1,10 +1,14 @@
 import './App.css'
-import NailKYCCamera from './NailKYCCamera'
+import NailWithCoin from './NailWithCoin'
+// import NailWithCoin from './deep/NailWithCoin'
+// import NailWithCoin from './NailWithCoin'
 
 function App() {
 
   return (
-   <NailKYCCamera />
+  //  <NailWithCoin />
+  // // <CircleDetect />
+  <NailWithCoin />
 
   )
 
