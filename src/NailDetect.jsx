@@ -1,32 +1,35 @@
+
 import * as handpose from "@tensorflow-models/handpose";
 import * as tf from "@tensorflow/tfjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+
+import fingerFrameImage from "./fingerFrame.png";
 
 // ============================================
 // 🎯 TUNABLE PARAMETERS - ADJUST THESE VALUES
 // ============================================
 const BEND_CONFIG = {
-  // Angle thresholds (in degrees) - Increased for more tolerance
-  ANGLE1_THRESHOLD: 170,    // Max angle at tip joint (higher = more tolerance)
-  ANGLE2_THRESHOLD: 175,    // Max angle at middle joint (higher = more tolerance)
+  // Angle thresholds (in degrees)
+  ANGLE1_THRESHOLD: 170,    // Max angle at tip joint (higher = more tolerance) [140-180]
+  ANGLE2_THRESHOLD: 175,    // Max angle at middle joint (higher = more tolerance) [150-180]
   
   // Distance thresholds
-  DISTANCE_RATIO_MAX: 3.0,  // Increased max ratio for more flexibility
+  DISTANCE_RATIO_MAX: 3.0,  // Max tip-to-wrist vs mcp-to-wrist ratio [1.2-3.5]
   
-  // Z-depth thresholds for bend towards camera (smaller z = closer to camera)
-  Z_DIFF_THRESHOLD: -10,    // Relaxed threshold for z diff (less negative = more tolerance)
+  // Z-depth thresholds for bend towards camera
+  Z_DIFF_THRESHOLD: -10,    // Relaxed threshold for z diff (less negative = more tolerance) [-20 to -5]
   
   // Distance from camera
   TOO_FAR_THRESHOLD: 0.15,  // Finger too far [0.10-0.20]
-  TOO_CLOSE_THRESHOLD: 0.55, // Finger too close [0.35-0.55]
+  TOO_CLOSE_THRESHOLD: 0.55, // Finger too close [0.35-0.65]
   
   // Stability
   HISTORY_LENGTH: 5,        // Number of frames to average [3-8]
-  STABLE_BEND_REQUIRED: 3,  // Minimum number of true bends in history for stable
+  STABLE_BEND_REQUIRED: 3,  // Minimum number of true bends in history [2-5]
   MIN_CONFIDENCE: 0.75,     // Min hand confidence [0.6-0.9]
   
-  // New: Bend score threshold for isBent
-  BEND_SCORE_THRESHOLD: 40, // Minimum bend score to consider bent (for tolerance)
+  // Bend score threshold
+  BEND_SCORE_THRESHOLD: 40, // Minimum bend score to consider bent [30-60]
 };
 // ============================================
 
@@ -46,35 +49,35 @@ const checkFingerDistance = (fingerSize, canvasHeight, history) => {
   if (avgSize < BEND_CONFIG.TOO_FAR_THRESHOLD) {
     return {
       status: "TOO FAR",
-      dValue: avgSize
+      dValue: avgSize,
+      history: newHistory
     };
   }
   if (avgSize > BEND_CONFIG.TOO_CLOSE_THRESHOLD) {
     return {
       status: "TOO CLOSE",
-      dValue: avgSize
+      dValue: avgSize,
+      history: newHistory
     };
   }
   return {
     status: "PERFECT",
-    dValue: avgSize
+    dValue: avgSize,
+    history: newHistory
   };
 };
 
 const calculateFingerBend = (landmarks) => {
-  // Get index finger landmarks
-  const tip = landmarks[8];      // Index fingertip
-  const dip = landmarks[7];      // Distal interphalangeal joint
-  const pip = landmarks[6];      // Proximal interphalangeal joint
-  const mcp = landmarks[5];      // Metacarpophalangeal joint
+  const tip = landmarks[8];
+  const dip = landmarks[7];
+  const pip = landmarks[6];
+  const mcp = landmarks[5];
   const wrist = landmarks[0];
 
-  // Calculate vectors (using x,y only for angles)
   const v1 = [tip[0] - dip[0], tip[1] - dip[1]];
   const v2 = [dip[0] - pip[0], dip[1] - pip[1]];
   const v3 = [pip[0] - mcp[0], pip[1] - mcp[1]];
 
-  // Calculate angles using dot product
   const dotProduct = (a, b) => a[0] * b[0] + a[1] * b[1];
   const magnitude = (v) => Math.sqrt(v[0] * v[0] + v[1] * v[1]);
   
@@ -86,7 +89,6 @@ const calculateFingerBend = (landmarks) => {
     Math.max(-1, Math.min(1, dotProduct(v2, v3) / (magnitude(v2) * magnitude(v3))))
   ) * (180 / Math.PI);
 
-  // Check if finger is pointing towards camera
   const tipToWristDist = Math.sqrt(
     Math.pow(tip[0] - wrist[0], 2) + Math.pow(tip[1] - wrist[1], 2)
   );
@@ -95,15 +97,8 @@ const calculateFingerBend = (landmarks) => {
   );
 
   const distanceRatio = tipToWristDist / mcpToWristDist;
-
-  // Improved bend towards camera check using z-coordinates
-  // z smaller (more negative) means closer to camera, relative to wrist
-  const zBendCheck = tip[2] < dip[2] && dip[2] < pip[2]; // tip closer than dip closer than pip
-
-  // Quantitative z diff for threshold
+  const zBendCheck = tip[2] < dip[2] && dip[2] < pip[2];
   const zDiff = tip[2] - pip[2];
-
-  // Calculate bend score
   const bendScore = (180 - angle1) + (180 - angle2);
 
   return {
@@ -143,7 +138,7 @@ const areFingerLandmarksInZone = (bendData, zone) => {
   const points = [bendData.tip, bendData.dip, bendData.pip];
   const inZoneCount = points.filter(point => isInZone(point)).length;
   
-  return inZoneCount >= 2; // At least 2 key points should be in zone
+  return inZoneCount >= 2;
 };
 
 export default function NailDetect() {
@@ -152,7 +147,11 @@ export default function NailDetect() {
   const capturedCanvasRef = useRef(null);
   const detectionLoopRef = useRef(null);
   const streamRef = useRef(null);
+  const videoTrackRef = useRef(null);
   const isDetectionActiveRef = useRef(false);
+  const bendHistoryRef = useRef([]);
+  const sizeHistoryRef = useRef([]);
+  const fingerFrameImageRef = useRef(null);
 
   const [handposeModel, setHandposeModel] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -165,23 +164,18 @@ export default function NailDetect() {
   const [error, setError] = useState(null);
   const [bendScore, setBendScore] = useState(0);
   const [dValue, setDValue] = useState(0);
-  const [sizeHistory, setSizeHistory] = useState([]);
-  const [bendHistory, setBendHistory] = useState([]);
   const [detectionZone, setDetectionZone] = useState({
     x: 0,
     y: 0,
-    width: 800,
-    height: 800,
+    width: 352,
+    height: 222,
   });
   const [angle1, setAngle1] = useState(0);
   const [angle2, setAngle2] = useState(0);
   const [zDiff, setZDiff] = useState(0);
   const [distanceRatio, setDistanceRatio] = useState(0);
-  const [windowSize, setWindowSize] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight
-  });
-  const [isFlashOn, setIsFlashOn] = useState(false)
+  const [isFlashOn, setIsFlashOn] = useState(false);
+  const [isFingerFrameLoaded, setIsFingerFrameLoaded] = useState(false);
 
   const turnOnFlash = async () => {
     if (isFlashOn) return;
@@ -210,14 +204,15 @@ export default function NailDetect() {
   };
 
   useEffect(() => {
-    const handleResize = () => {
-      setWindowSize({
-        width: window.innerWidth,
-        height: window.innerHeight
-      });
+    const img = new Image();
+    img.src = fingerFrameImage;
+    img.onload = () => {
+      fingerFrameImageRef.current = img;
+      setIsFingerFrameLoaded(true);
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    img.onerror = () => {
+      console.error("Failed to load finger frame image");
+    };
   }, []);
 
   const setupCamera = useCallback(async (retryCount = 0) => {
@@ -226,8 +221,8 @@ export default function NailDetect() {
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-        //   facingMode: "user",
-        facingMode: {exact: 'environment'},
+        //   facingMode: { exact: "environment" },
+        facingMode: 'user',
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
           frameRate: { ideal: 30, max: 30 },
@@ -235,6 +230,7 @@ export default function NailDetect() {
       });
 
       streamRef.current = stream;
+      videoTrackRef.current = stream.getVideoTracks()[0];
       setLoadingProgress(40);
 
       if (videoRef.current) {
@@ -269,6 +265,21 @@ export default function NailDetect() {
 
       setLoadingProgress(80);
       
+      if (videoTrackRef.current) {
+        try {
+          const capabilities = videoTrackRef.current.getCapabilities();
+          if (capabilities.torch) {
+            await videoTrackRef.current.applyConstraints({
+              advanced: [{ torch: true }]
+            });
+            setIsFlashOn(true);
+            console.log("Flashlight turned on");
+          }
+        } catch (err) {
+          console.log("Flashlight not available:", err);
+        }
+      }
+      
       const handModel = await handpose.load();
       setHandposeModel(handModel);
 
@@ -290,7 +301,8 @@ export default function NailDetect() {
       !handposeModel ||
       !videoRef.current ||
       !isDetectionActiveRef.current ||
-      capturedImage
+      capturedImage ||
+      !isFingerFrameLoaded
     ) {
       return;
     }
@@ -305,43 +317,39 @@ export default function NailDetect() {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
 
-      // Set canvas size to match video
       if (canvas.width !== videoRef.current.videoWidth) {
         canvas.width = videoRef.current.videoWidth;
         canvas.height = videoRef.current.videoHeight;
 
-        // Update detection zone to center, responsive size
-        const scaleFactor = Math.min(
-          windowSize.width / canvas.width,
-          windowSize.height / canvas.height
-        );
-        const zoneSize = Math.min(canvas.width, canvas.height) * 0.5 * scaleFactor;
-        const newZone = {
-          x: (canvas.width - zoneSize) / 2,
-          y: (canvas.height - zoneSize) / 2,
-          width: zoneSize,
-          height: zoneSize,
-        };
-        setDetectionZone(newZone);
+        const fingerFrameWidth = 352;
+        const fingerFrameHeight = 322;
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        setDetectionZone({
+          x: centerX - fingerFrameWidth / 2,
+          y: centerY - fingerFrameHeight / 2,
+          width: fingerFrameWidth,
+          height: fingerFrameHeight,
+        });
       }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw dark overlay
-      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Draw finger frame image
+      if (fingerFrameImageRef.current) {
+        ctx.drawImage(
+          fingerFrameImageRef.current,
+          detectionZone.x,
+          detectionZone.y,
+          detectionZone.width,
+          detectionZone.height
+        );
+      }
 
-      // Clear detection zone
-      ctx.clearRect(
-        detectionZone.x,
-        detectionZone.y,
-        detectionZone.width,
-        detectionZone.height
-      );
-
-      // Draw detection zone border
-      ctx.strokeStyle = "#10b981";
-      ctx.lineWidth = 4;
+      // Draw green boundary around finger frame
+      ctx.strokeStyle = fingerInZone ? "#10b981" : "rgba(16, 185, 129, 0.5)";
+      ctx.lineWidth = 3;
       ctx.strokeRect(
         detectionZone.x,
         detectionZone.y,
@@ -349,185 +357,112 @@ export default function NailDetect() {
         detectionZone.height
       );
 
-      // Draw corner accents
-      const cornerSize = Math.min(30, detectionZone.width * 0.1);
-      ctx.strokeStyle = "#10b981";
-      ctx.lineWidth = 6;
-      
-      // Top-left
-      ctx.beginPath();
-      ctx.moveTo(detectionZone.x, detectionZone.y + cornerSize);
-      ctx.lineTo(detectionZone.x, detectionZone.y);
-      ctx.lineTo(detectionZone.x + cornerSize, detectionZone.y);
-      ctx.stroke();
-
-      // Top-right
-      ctx.beginPath();
-      ctx.moveTo(detectionZone.x + detectionZone.width - cornerSize, detectionZone.y);
-      ctx.lineTo(detectionZone.x + detectionZone.width, detectionZone.y);
-      ctx.lineTo(detectionZone.x + detectionZone.width, detectionZone.y + cornerSize);
-      ctx.stroke();
-
-      // Bottom-left
-      ctx.beginPath();
-      ctx.moveTo(detectionZone.x, detectionZone.y + detectionZone.height - cornerSize);
-      ctx.lineTo(detectionZone.x, detectionZone.y + detectionZone.height);
-      ctx.lineTo(detectionZone.x + cornerSize, detectionZone.y + detectionZone.height);
-      ctx.stroke();
-
-      // Bottom-right
-      ctx.beginPath();
-      ctx.moveTo(detectionZone.x + detectionZone.width - cornerSize, detectionZone.y + detectionZone.height);
-      ctx.lineTo(detectionZone.x + detectionZone.width, detectionZone.y + detectionZone.height);
-      ctx.lineTo(detectionZone.x + detectionZone.width, detectionZone.y + detectionZone.height - cornerSize);
-      ctx.stroke();
-
-      let bent = false;
-      let stableBent = false;
-      let inZone = false;
-      let currentBendScore = 0;
-      let distanceOk = false;
-
       if (predictions.length > 0) {
         const hand = predictions[0];
 
         if (hand.handInViewConfidence > BEND_CONFIG.MIN_CONFIDENCE) {
           const landmarks = hand.landmarks;
-          
-          // Calculate finger bend
           const bendData = calculateFingerBend(landmarks);
+          const inZone = areFingerLandmarksInZone(bendData, detectionZone);
           
-          // Check if finger keypoints are in zone FIRST
-          inZone = areFingerLandmarksInZone(bendData, detectionZone);
           setFingerInZone(inZone);
 
-          // Only process if finger is in zone
           if (inZone && bendData.tip && bendData.wrist) {
-            // Check distance (too far/too close)
             const fingerSize = calculateFingerSize(bendData.tip, bendData.wrist);
-            const { status: distance, dValue: newD } = checkFingerDistance(
+            const distanceResult = checkFingerDistance(
               fingerSize,
               canvas.height,
-              sizeHistory
+              sizeHistoryRef.current
             );
             
-            setDValue(newD);
-            setDistanceStatus(distance);
-            setSizeHistory((prev) => [
-              ...prev.slice(-BEND_CONFIG.HISTORY_LENGTH + 1),
-              fingerSize / canvas.height,
-            ]);
+            sizeHistoryRef.current = distanceResult.history;
+            setDValue(distanceResult.dValue);
+            setDistanceStatus(distanceResult.status);
             
-            distanceOk = distance === "PERFECT";
+            const distanceOk = distanceResult.status === "PERFECT";
             
-            // Check bend only if distance is OK
             if (distanceOk) {
-              bent = bendData.isBent;
-              currentBendScore = bendData.bendScore;
+              const bent = bendData.isBent;
+              
+              bendHistoryRef.current = [
+                ...bendHistoryRef.current.slice(-BEND_CONFIG.HISTORY_LENGTH + 1),
+                bent ? 1 : 0
+              ];
 
-              // Update bend history
-              setBendHistory((prev) => [
-                ...prev.slice(-BEND_CONFIG.HISTORY_LENGTH + 1),
-                bent ? 1 : 0,
-              ]);
-
-              // Calculate stable bent
-              const bendCount = bendHistory.reduce((a, b) => a + b, 0);
-              stableBent = bendCount >= BEND_CONFIG.STABLE_BEND_REQUIRED;
+              const bendCount = bendHistoryRef.current.reduce((a, b) => a + b, 0);
+              const stableBent = bendCount >= BEND_CONFIG.STABLE_BEND_REQUIRED;
 
               setIsFingerBent(stableBent);
-              setBendScore(currentBendScore);
+              setBendScore(bendData.bendScore);
               setAngle1(bendData.angle1);
               setAngle2(bendData.angle2);
               setZDiff(bendData.zDiff);
               setDistanceRatio(bendData.distanceRatio);
+
+              const indexFingerIndices = [5, 6, 7, 8];
+              
+              for (let i = 0; i < indexFingerIndices.length - 1; i++) {
+                const idx1 = indexFingerIndices[i];
+                const idx2 = indexFingerIndices[i + 1];
+                const point1 = landmarks[idx1];
+                const point2 = landmarks[idx2];
+                
+                ctx.beginPath();
+                ctx.moveTo(point1[0], point1[1]);
+                ctx.lineTo(point2[0], point2[1]);
+                ctx.strokeStyle = stableBent && distanceOk ? "#10b981" : "#f59e0b";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+              }
+
+              indexFingerIndices.forEach((idx) => {
+                const point = landmarks[idx];
+                ctx.beginPath();
+                ctx.arc(point[0], point[1], 8, 0, 2 * Math.PI);
+                ctx.fillStyle = stableBent && distanceOk ? "#10b981" : "#f59e0b";
+                ctx.fill();
+                ctx.strokeStyle = "white";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+              });
+
+              if (!stableBent) {
+                setStatusMessage("Bend finger towards camera to show nail curve");
+              } else {
+                setStatusMessage("Perfect! Nail curve visible - Ready to capture");
+              }
             } else {
               setIsFingerBent(false);
               setBendScore(0);
-              setAngle1(0);
-              setAngle2(0);
-              setZDiff(0);
-              setDistanceRatio(0);
-              setBendHistory([]);
-            }
-
-            // Draw finger landmarks (only index finger - landmarks 5-8)
-            const indexFingerIndices = [5, 6, 7, 8];
-            
-            // Draw connections between joints
-            for (let i = 0; i < indexFingerIndices.length - 1; i++) {
-              const idx1 = indexFingerIndices[i];
-              const idx2 = indexFingerIndices[i + 1];
-              const point1 = landmarks[idx1];
-              const point2 = landmarks[idx2];
+              bendHistoryRef.current = [];
               
-              ctx.beginPath();
-              ctx.moveTo(point1[0], point1[1]);
-              ctx.lineTo(point2[0], point2[1]);
-              ctx.strokeStyle = stableBent && distanceOk ? "#10b981" : "#f59e0b";
-              ctx.lineWidth = 3;
-              ctx.stroke();
-            }
-
-            // Draw keypoint circles
-            indexFingerIndices.forEach((idx) => {
-              const point = landmarks[idx];
-              ctx.beginPath();
-              ctx.arc(point[0], point[1], 8, 0, 2 * Math.PI);
-              ctx.fillStyle = stableBent && distanceOk ? "#10b981" : "#f59e0b";
-              ctx.fill();
-              ctx.strokeStyle = "white";
-              ctx.lineWidth = 2;
-              ctx.stroke();
-            });
-
-            // Update status message
-            if (!distanceOk) {
-              if (distance === "TOO FAR") {
+              if (distanceResult.status === "TOO FAR") {
                 setStatusMessage("Move finger closer to camera");
-              } else if (distance === "TOO CLOSE") {
+              } else {
                 setStatusMessage("Move finger away from camera");
               }
-            } else if (!stableBent) {
-              setStatusMessage("Bend or lean finger towards camera to show nail curve");
-            } else {
-              setStatusMessage("Perfect! Nail curve visible - Ready to capture");
             }
-          } else if (!inZone) {
+          } else {
             setStatusMessage("Move finger into detection zone");
             setIsFingerBent(false);
             setDistanceStatus("");
             setBendScore(0);
-            setAngle1(0);
-            setAngle2(0);
-            setZDiff(0);
-            setDistanceRatio(0);
-            setBendHistory([]);
+            bendHistoryRef.current = [];
           }
         } else {
           setStatusMessage("Hand not detected clearly");
           setIsFingerBent(false);
           setFingerInZone(false);
           setDistanceStatus("");
-          setBendScore(0);
-          setAngle1(0);
-          setAngle2(0);
-          setZDiff(0);
-          setDistanceRatio(0);
-          setBendHistory([]);
+          bendHistoryRef.current = [];
         }
       } else {
         setStatusMessage("No hand detected");
         setIsFingerBent(false);
         setFingerInZone(false);
         setDistanceStatus("");
-        setSizeHistory([]);
-        setBendScore(0);
-        setAngle1(0);
-        setAngle2(0);
-        setZDiff(0);
-        setDistanceRatio(0);
-        setBendHistory([]);
+        sizeHistoryRef.current = [];
+        bendHistoryRef.current = [];
       }
 
     } catch (err) {
@@ -535,7 +470,7 @@ export default function NailDetect() {
     }
 
     detectionLoopRef.current = setTimeout(detectHand, 100);
-  }, [handposeModel, capturedImage, sizeHistory, detectionZone, bendHistory, windowSize]);
+  }, [handposeModel, capturedImage, detectionZone, isFingerFrameLoaded]);
 
   const handleCapture = useCallback(() => {
     if (!isFingerBent || !fingerInZone || distanceStatus !== "PERFECT") {
@@ -552,7 +487,6 @@ export default function NailDetect() {
       const ctx = capturedCanvas.getContext("2d");
       const video = videoRef.current;
 
-      // Crop to detection zone
       capturedCanvas.width = detectionZone.width;
       capturedCanvas.height = detectionZone.height;
 
@@ -571,21 +505,19 @@ export default function NailDetect() {
       const imageData = capturedCanvas.toDataURL("image/jpeg", 0.95);
 
       console.log("=== NAIL IMAGE CAPTURED FOR BACKEND ===");
-      console.log("Image Data (Base64):", imageData);
+      console.log("Image Data (Base64):", imageData.substring(0, 100) + "...");
       console.log("Image Size:", imageData.length, "characters");
       console.log("Dimensions:", {
         width: capturedCanvas.width,
         height: capturedCanvas.height
       });
-      console.log("Bend Score:", bendScore);
-      console.log("Distance Value:", dValue);
 
       setCapturedImage(imageData);
       isDetectionActiveRef.current = false;
     } catch (err) {
       console.error("Capture error:", err);
     }
-  }, [isFingerBent, fingerInZone, distanceStatus, bendScore, dValue, detectionZone]);
+  }, [isFingerBent, fingerInZone, distanceStatus, detectionZone]);
 
   const resetCapture = useCallback(async () => {
     setCapturedImage(null);
@@ -595,13 +527,13 @@ export default function NailDetect() {
     setDistanceStatus("");
     setBendScore(0);
     setDValue(0);
-    setSizeHistory([]);
-    setBendHistory([]);
     setError(null);
     setAngle1(0);
     setAngle2(0);
     setZDiff(0);
     setDistanceRatio(0);
+    sizeHistoryRef.current = [];
+    bendHistoryRef.current = [];
 
     await setupCamera();
     isDetectionActiveRef.current = true;
@@ -620,11 +552,16 @@ export default function NailDetect() {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
+      if (videoTrackRef.current) {
+        videoTrackRef.current.applyConstraints({
+          advanced: [{ torch: false }]
+        }).catch(() => {});
+      }
     };
   }, [setupCamera, loadModels]);
 
   useEffect(() => {
-    if (handposeModel && !isLoading && !capturedImage) {
+    if (handposeModel && !isLoading && !capturedImage && isFingerFrameLoaded) {
       isDetectionActiveRef.current = true;
       detectHand();
     }
@@ -635,7 +572,7 @@ export default function NailDetect() {
         clearTimeout(detectionLoopRef.current);
       }
     };
-  }, [handposeModel, isLoading, capturedImage, detectHand]);
+  }, [handposeModel, isLoading, capturedImage, detectHand, isFingerFrameLoaded]);
 
   if (error) {
     return (
@@ -692,7 +629,6 @@ export default function NailDetect() {
 
       {!isLoading && (
         <>
-          {/* Status indicator - top left */}
           <div style={styles.statusContainer}>
             <div
               style={{
@@ -706,7 +642,6 @@ export default function NailDetect() {
               <span style={styles.statusText}>{statusMessage}</span>
             </div>
             
-            {/* Debug info */}
             <div style={styles.debugInfo}>
               <div style={styles.debugItem}>
                 <span style={styles.debugLabel}>In Zone:</span>
@@ -758,7 +693,6 @@ export default function NailDetect() {
             </div>
           </div>
 
-          {/* Distance indicator - appears above detection zone */}
           {distanceStatus && distanceStatus !== "PERFECT" && fingerInZone && (
             <div
               style={{
@@ -773,7 +707,6 @@ export default function NailDetect() {
             </div>
           )}
 
-          {/* Capture button - bottom center */}
           <button
             onClick={handleCapture}
             disabled={!isReadyToCapture}
@@ -791,6 +724,7 @@ export default function NailDetect() {
     </div>
   );
 }
+
 
 const styles = {
   container: {
