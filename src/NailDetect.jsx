@@ -223,9 +223,10 @@ export default function NailDetect() {
     img.onload = () => {
       fingerFrameImageRef.current = img;
       setIsFingerFrameLoaded(true);
+      console.log("Finger frame image loaded successfully");
     };
-    img.onerror = () => {
-      console.error("Failed to load finger frame image");
+    img.onerror = (err) => {
+      console.error("Failed to load finger frame image", err);
     };
   }, []);
 
@@ -239,7 +240,7 @@ export default function NailDetect() {
         // facingMode: 'user',
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 20, max: 30 },
+          frameRate: { ideal: 30, max: 30 },
         },
       });
 
@@ -711,7 +712,7 @@ export default function NailDetect() {
                 <span style={styles.debugLabel}>Bend Score:</span>
                 <span style={styles.debugValue}>{bendScore?.toFixed(1)}</span>
               </div>
-              {/* <div style={styles.debugItem}>
+             {/* <div style={styles.debugItem}>
                 <span style={styles.debugLabel}>Angle1:</span>
                 <span style={styles.debugValue}>{angle1.toFixed(1)}</span>
               </div>
@@ -727,8 +728,7 @@ export default function NailDetect() {
                 <span style={styles.debugLabel}>Dist Ratio:</span>
                 <span style={styles.debugValue}>{distanceRatio?.toFixed(2)}</span>
               </div>
-              */}
-            </div>
+              */}            </div>
           </div>
 
           {distanceStatus && distanceStatus !== "PERFECT" && fingerInZone && (
