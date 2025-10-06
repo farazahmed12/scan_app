@@ -1,4 +1,3 @@
-
 import * as handpose from "@tensorflow-models/handpose";
 import * as tf from "@tensorflow/tfjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -167,8 +166,8 @@ export default function NailDetect() {
   const [detectionZone, setDetectionZone] = useState({
     x: 0,
     y: 0,
-    width: 352,
-    height: 222,
+    width: 0,
+    height: 0,
   });
   const [angle1, setAngle1] = useState(0);
   const [angle2, setAngle2] = useState(0);
@@ -176,6 +175,21 @@ export default function NailDetect() {
   const [distanceRatio, setDistanceRatio] = useState(0);
   const [isFlashOn, setIsFlashOn] = useState(false);
   const [isFingerFrameLoaded, setIsFingerFrameLoaded] = useState(false);
+  const [windowSize, setWindowSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const turnOnFlash = async () => {
     if (isFlashOn) return;
@@ -225,7 +239,7 @@ export default function NailDetect() {
         // facingMode: 'user',
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 30 },
+          frameRate: { ideal: 20, max: 30 },
         },
       });
 
@@ -317,20 +331,43 @@ export default function NailDetect() {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
 
-      if (canvas.width !== videoRef.current.videoWidth) {
-        canvas.width = videoRef.current.videoWidth;
-        canvas.height = videoRef.current.videoHeight;
+      const videoWidth = videoRef.current.videoWidth;
+      const videoHeight = videoRef.current.videoHeight;
 
-        const fingerFrameWidth = 352;
-        const fingerFrameHeight = 322;
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
+      if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
+        canvas.width = videoWidth;
+        canvas.height = videoHeight;
+      }
 
+      // Calculate responsive detection zone
+      const aspectRatio = fingerFrameImageRef.current.width / fingerFrameImageRef.current.height;
+      const maxZoneWidth = videoWidth * 0.9;
+      const maxZoneHeight = videoHeight * 0.6;
+      let zoneWidth, zoneHeight;
+
+      if (maxZoneWidth / aspectRatio <= maxZoneHeight) {
+        zoneWidth = maxZoneWidth;
+        zoneHeight = maxZoneWidth / aspectRatio;
+      } else {
+        zoneWidth = maxZoneHeight * aspectRatio;
+        zoneHeight = maxZoneHeight;
+      }
+
+      const zoneX = (videoWidth - zoneWidth) / 2;
+      const zoneY = (videoHeight - zoneHeight) / 2;
+
+      // Update detection zone if changed
+      if (
+        detectionZone.x !== zoneX ||
+        detectionZone.y !== zoneY ||
+        detectionZone.width !== zoneWidth ||
+        detectionZone.height !== zoneHeight
+      ) {
         setDetectionZone({
-          x: centerX - fingerFrameWidth / 2,
-          y: centerY - fingerFrameHeight / 2,
-          width: fingerFrameWidth,
-          height: fingerFrameHeight,
+          x: zoneX,
+          y: zoneY,
+          width: zoneWidth,
+          height: zoneHeight,
         });
       }
 
@@ -470,7 +507,7 @@ export default function NailDetect() {
     }
 
     detectionLoopRef.current = setTimeout(detectHand, 100);
-  }, [handposeModel, capturedImage, detectionZone, isFingerFrameLoaded]);
+  }, [handposeModel, capturedImage, isFingerFrameLoaded, windowSize]);
 
   const handleCapture = useCallback(() => {
     if (!isFingerBent || !fingerInZone || distanceStatus !== "PERFECT") {
@@ -668,28 +705,29 @@ export default function NailDetect() {
               </div>
               <div style={styles.debugItem}>
                 <span style={styles.debugLabel}>D-Value:</span>
-                <span style={styles.debugValue}>{dValue.toFixed(3)}</span>
+                <span style={styles.debugValue}>{dValue?.toFixed(3)}</span>
               </div>
               <div style={styles.debugItem}>
                 <span style={styles.debugLabel}>Bend Score:</span>
-                <span style={styles.debugValue}>{bendScore.toFixed(1)}</span>
+                <span style={styles.debugValue}>{bendScore?.toFixed(1)}</span>
               </div>
-              <div style={styles.debugItem}>
+              {/* <div style={styles.debugItem}>
                 <span style={styles.debugLabel}>Angle1:</span>
                 <span style={styles.debugValue}>{angle1.toFixed(1)}</span>
               </div>
               <div style={styles.debugItem}>
                 <span style={styles.debugLabel}>Angle2:</span>
                 <span style={styles.debugValue}>{angle2.toFixed(1)}</span>
-              </div>
+              </div> 
               <div style={styles.debugItem}>
                 <span style={styles.debugLabel}>Z Diff:</span>
-                <span style={styles.debugValue}>{zDiff.toFixed(1)}</span>
+                <span style={styles.debugValue}>{zDiff?.toFixed(1)}</span>
               </div>
               <div style={styles.debugItem}>
                 <span style={styles.debugLabel}>Dist Ratio:</span>
-                <span style={styles.debugValue}>{distanceRatio.toFixed(2)}</span>
+                <span style={styles.debugValue}>{distanceRatio?.toFixed(2)}</span>
               </div>
+              */}
             </div>
           </div>
 
