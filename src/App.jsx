@@ -1,6 +1,6 @@
 import './App.css'
 // import NailWithCoin from './NailWithCoin'
-import NailWithCoin from './deep/NailWithCoin'
+import NailDetect from './NailDetect'
 // import NailWithCoin from './NailWithCoin'
 
 function App() {
@@ -8,7 +8,8 @@ function App() {
   return (
   //  <NailWithCoin />
   // // <CircleDetect />
-  <NailWithCoin />
+  // <NailWithCoin />
+  <NailDetect />
 
   )
 
